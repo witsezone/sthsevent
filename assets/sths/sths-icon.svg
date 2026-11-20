@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="112" fill="#003B5C"/>
+  <rect x="24" y="24" width="464" height="464" rx="92" fill="url(#sthsGrad)"/>
+  <!-- STHS Gold geometric motif -->
+  <path d="M368 88 L428 88 L428 148" stroke="#C59627" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
+  <circle cx="96" cy="412" r="44" fill="#C59627" opacity="0.22"/>
+  <!-- Stylized STHS interlocking therapeutic care & synergy emblem -->
+  <circle cx="222" cy="170" r="34" fill="#FFFFFF"/>
+  <circle cx="294" cy="216" r="24" fill="#F2D07B"/>
+  <path d="M132 272 C132 346 196 392 274 388 C332 385 378 344 390 290" stroke="#FFFFFF" stroke-width="26" stroke-linecap="round"/>
+  <path d="M174 252 C180 306 226 340 282 336 C322 333 352 308 364 274" stroke="#F2D07B" stroke-width="20" stroke-linecap="round"/>
+  <defs>
+    <linearGradient id="sthsGrad" x1="24" y1="24" x2="488" y2="488" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#007377"/>
+      <stop offset="1" stop-color="#003B5C"/>
+    </linearGradient>
+  </defs>
+</svg>

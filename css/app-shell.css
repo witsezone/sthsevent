@@ -1,0 +1,557 @@
+/* ==========================================================================
+   STHS EventHub — Device-Adaptive PWA App Shell, Auth Modals, QR Pass & Toasts
+   Operates natively like a mobile app on phones/tablets and command hub on desktop
+   ========================================================================== */
+
+/* Offline / Network Banner */
+.network-status-bar {
+  display: none;
+  background: var(--wits-navy-deep);
+  color: #fff;
+  text-align: center;
+  padding: 0.45rem 1rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 1200;
+}
+.network-status-bar.visible {
+  display: block;
+}
+
+/* Smart PWA Install App Banner (Appears automatically on mobile/installable browsers) */
+.pwa-install-banner {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  background: linear-gradient(90deg, var(--wits-navy) 0%, var(--sths-teal) 100%);
+  color: #fff;
+  padding: 0.6rem 1.25rem;
+  font-size: 0.84rem;
+  position: relative;
+  z-index: 110;
+}
+.pwa-install-banner.visible {
+  display: flex;
+}
+.pwa-install-left {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+}
+.pwa-install-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: #fff;
+  padding: 3px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+.pwa-install-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+.pwa-install-btn {
+  background: var(--sths-gold);
+  color: var(--wits-navy-deep);
+  border: none;
+  border-radius: var(--radius-pill);
+  padding: 0.38rem 0.9rem;
+  font-weight: 800;
+  font-size: 0.78rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pwa-dismiss-btn {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  border: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+/* Native Mobile Bottom App Dock (Shown automatically on mobile/small tablets) */
+.mobile-app-dock {
+  display: none;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 900;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-top: 1px solid var(--border-light);
+  box-shadow: 0 -8px 28px rgba(0, 35, 56, 0.1);
+  padding: 0.35rem 0.4rem calc(0.45rem + var(--safe-bottom));
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.15rem;
+}
+
+.dock-item {
+  appearance: none;
+  background: transparent;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.18rem;
+  padding: 0.38rem 0.2rem;
+  border-radius: 12px;
+  color: var(--text-muted);
+  font-size: 0.67rem;
+  font-weight: 700;
+  cursor: pointer;
+  position: relative;
+  transition: color 0.16s ease, background 0.16s ease, transform 0.12s ease;
+  text-decoration: none;
+}
+.dock-item:active {
+  transform: scale(0.94);
+}
+.dock-item .dock-icon {
+  font-size: 1.2rem;
+  line-height: 1;
+}
+.dock-item.active {
+  color: var(--sths-teal);
+  background: var(--sths-teal-tint);
+}
+.dock-item .dock-live-dot {
+  position: absolute;
+  top: 5px;
+  right: calc(50% - 14px);
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--status-live);
+  box-shadow: 0 0 0 2px #fff;
+}
+
+/* Mobile Slide-Up Bottom Sheet ("More" App Drawer) */
+.app-sheet-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 950;
+  background: rgba(0, 26, 44, 0.56);
+  backdrop-filter: blur(4px);
+  align-items: flex-end;
+  justify-content: center;
+}
+.app-sheet-backdrop.open {
+  display: flex;
+}
+.app-sheet-panel {
+  width: 100%;
+  max-width: 560px;
+  background: #fff;
+  border-radius: 24px 24px 0 0;
+  padding: 0.75rem 1.25rem calc(1.5rem + var(--safe-bottom));
+  box-shadow: var(--shadow-lg);
+  animation: sheetSlideUp 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+  max-height: 82vh;
+  overflow-y: auto;
+}
+@keyframes sheetSlideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+.app-sheet-handle {
+  width: 42px;
+  height: 4px;
+  border-radius: 99px;
+  background: #cbd8df;
+  margin: 0 auto 0.9rem;
+}
+.app-sheet-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.65rem;
+  margin-top: 0.75rem;
+}
+.app-sheet-tile {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.85rem 0.9rem;
+  border-radius: 14px;
+  border: 1.5px solid var(--border-light);
+  background: var(--surface-canvas);
+  color: var(--text-primary);
+  font-weight: 700;
+  font-size: 0.86rem;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.app-sheet-tile:hover {
+  border-color: var(--sths-teal);
+  background: var(--sths-teal-tint);
+}
+.app-sheet-tile span.tile-ico {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+@media (max-width: 900px) {
+  .mobile-app-dock {
+    display: grid;
+  }
+  body.has-mobile-dock {
+    padding-bottom: calc(var(--mobile-dock-height) + var(--safe-bottom) + 12px);
+  }
+}
+
+/* ==========================================================================
+   SHARED PRODUCTION MODALS (Auth, QR Digital Pass, Supabase Setup, iOS Guide)
+   ========================================================================== */
+.sths-modal-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1050;
+  background: rgba(0, 26, 44, 0.62);
+  backdrop-filter: blur(6px);
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  overflow-y: auto;
+}
+.sths-modal-backdrop.open {
+  display: flex;
+}
+.sths-modal {
+  background: #fff;
+  color: var(--text-primary);
+  border-radius: 22px;
+  width: 100%;
+  max-width: 520px;
+  max-height: 92vh;
+  overflow-y: auto;
+  padding: 1.65rem;
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border-light);
+  position: relative;
+  animation: modalPop 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.sths-modal.wide {
+  max-width: 700px;
+}
+@keyframes modalPop {
+  from { opacity: 0; transform: translateY(14px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.sths-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.15rem;
+}
+.sths-modal-title {
+  margin: 0;
+  font-size: 1.32rem;
+  font-weight: 800;
+  color: var(--wits-navy);
+  line-height: 1.25;
+}
+.sths-modal-subtitle {
+  margin: 0.25rem 0 0;
+  font-size: 0.86rem;
+  color: var(--text-muted);
+}
+.sths-modal-close {
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-light);
+  color: var(--text-primary);
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-weight: 700;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.sths-modal-close:hover {
+  background: #e3edf0;
+}
+
+/* Auth Mode Segmented Tabs */
+.auth-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.35rem;
+  background: var(--surface-subtle);
+  padding: 0.3rem;
+  border-radius: 12px;
+  margin-bottom: 1.1rem;
+}
+.auth-tab-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-weight: 700;
+  font-size: 0.82rem;
+  padding: 0.55rem 0.4rem;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+.auth-tab-btn.active {
+  background: #fff;
+  color: var(--wits-navy);
+  box-shadow: var(--shadow-xs);
+}
+
+.oauth-btn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 0.72rem 1rem;
+  border-radius: 12px;
+  border: 1.5px solid #1f2937;
+  background: #111827;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.16s ease, transform 0.12s ease;
+}
+.oauth-btn:hover {
+  background: #1f2937;
+}
+.oauth-btn:active {
+  transform: scale(0.99);
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1rem 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border-light);
+}
+
+.sths-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-bottom: 0.85rem;
+}
+.sths-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+@media (max-width: 560px) {
+  .sths-form-row {
+    grid-template-columns: 1fr;
+  }
+}
+.sths-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--wits-navy);
+}
+.sths-input,
+.sths-select,
+.sths-textarea {
+  width: 100%;
+  padding: 0.68rem 0.85rem;
+  border-radius: 11px;
+  border: 1.5px solid var(--border-strong);
+  background: #fff;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.sths-input:focus,
+.sths-select:focus,
+.sths-textarea:focus {
+  outline: none;
+  border-color: var(--sths-teal);
+  box-shadow: 0 0 0 3px rgba(0, 115, 119, 0.15);
+}
+
+.sths-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.72rem 1.35rem;
+  border-radius: var(--radius-pill);
+  font-weight: 700;
+  font-size: 0.9rem;
+  border: 1.5px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.16s ease;
+}
+.sths-btn-primary {
+  background: var(--sths-teal);
+  color: #fff;
+}
+.sths-btn-primary:hover {
+  background: var(--sths-teal-dark);
+}
+.sths-btn-navy {
+  background: var(--wits-navy);
+  color: #fff;
+}
+.sths-btn-navy:hover {
+  background: var(--wits-navy-deep);
+}
+.sths-btn-outline {
+  background: #fff;
+  color: var(--wits-navy);
+  border-color: var(--border-strong);
+}
+.sths-btn-outline:hover {
+  border-color: var(--sths-teal);
+  color: var(--sths-teal);
+}
+.sths-btn-gold {
+  background: var(--sths-gold);
+  color: var(--wits-navy-deep);
+}
+.sths-btn-sm {
+  padding: 0.48rem 0.95rem;
+  font-size: 0.82rem;
+}
+
+.sths-alert {
+  padding: 0.8rem 1rem;
+  border-radius: 12px;
+  font-size: 0.84rem;
+  line-height: 1.48;
+  margin-bottom: 1rem;
+}
+.sths-alert-info {
+  background: var(--sths-teal-mist);
+  border: 1px solid #bce0e2;
+  color: var(--wits-navy);
+}
+.sths-alert-warn {
+  background: var(--status-warn-bg);
+  border: 1px solid #f5d09b;
+  color: #7c4706;
+}
+.sths-alert-error {
+  background: var(--status-danger-bg);
+  border: 1px solid #f4b8ba;
+  color: #8b1e20;
+}
+.sths-alert-success {
+  background: var(--status-success-bg);
+  border: 1px solid #a7dfc9;
+  color: #0d573b;
+}
+
+/* Digital QR Delegate Badge Card */
+.qr-badge-card {
+  background: linear-gradient(155deg, var(--wits-navy) 0%, var(--sths-teal) 100%);
+  color: #fff;
+  border-radius: 20px;
+  padding: 1.45rem;
+  text-align: center;
+  box-shadow: var(--shadow-md);
+  position: relative;
+  overflow: hidden;
+}
+.qr-badge-card::after {
+  content: "";
+  position: absolute;
+  top: -36px;
+  right: -36px;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: rgba(197, 150, 39, 0.22);
+}
+.qr-badge-box {
+  background: #fff;
+  border-radius: 16px;
+  padding: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0.9rem auto;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+}
+.qr-badge-code {
+  font-family: var(--font-mono);
+  font-size: 0.86rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  background: rgba(255, 255, 255, 0.16);
+  padding: 0.28rem 0.85rem;
+  border-radius: var(--radius-pill);
+  display: inline-block;
+  margin-top: 0.35rem;
+}
+
+/* Toast Notifications */
+.sths-toast-stack {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 1300;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  max-width: min(380px, calc(100vw - 2rem));
+  pointer-events: none;
+}
+@media (max-width: 900px) {
+  .sths-toast-stack {
+    bottom: calc(var(--mobile-dock-height) + var(--safe-bottom) + 14px);
+    left: 1rem;
+    right: 1rem;
+    max-width: none;
+  }
+}
+.sths-toast {
+  background: var(--wits-navy-deep);
+  color: #fff;
+  padding: 0.8rem 1rem;
+  border-radius: 14px;
+  box-shadow: var(--shadow-md);
+  border-left: 4px solid var(--sths-gold);
+  font-size: 0.86rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  pointer-events: auto;
+  animation: toastIn 0.22s ease;
+}
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}

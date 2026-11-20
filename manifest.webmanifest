@@ -1,0 +1,31 @@
+{
+  "name": "STHS EventHub · Wits Therapeutic Sciences",
+  "short_name": "STHS Events",
+  "description": "Official Hybrid Conference & Events Platform for the Wits School of Therapeutic Sciences & eFundanathi eZone.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#FFFFFF",
+  "theme_color": "#003B5C",
+  "categories": ["education", "medical", "productivity"],
+  "icons": [
+    {
+      "src": "./assets/sths/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./assets/sths/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./assets/sths/sths-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

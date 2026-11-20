@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>STHS EventHub · Wits School of Therapeutic Sciences Official Events Platform</title>
+  <meta name="description" content="Official hybrid conference, symposium, and research events hub for the University of the Witwatersrand (Wits) School of Therapeutic Sciences and eFundanathi eZone." />
+  <meta name="theme-color" content="#003B5C" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="STHS EventHub" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="./assets/sths/sths-icon.svg" />
+  <link rel="apple-touch-icon" href="./assets/sths/icon-192.png" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="./css/tokens.css" />
+  <link rel="stylesheet" href="./css/app-shell.css" />
+  <link rel="stylesheet" href="./css/hub.css" />
+</head>
+<body>
+  <div id="networkStatusBar" class="network-status-bar" role="status" aria-live="polite"></div>
+
+  <!-- Smart PWA App Install Banner (Auto-detects mobile / installable desktop browsers) -->
+  <div id="pwaInstallBanner" class="pwa-install-banner">
+    <div class="pwa-install-left">
+      <img src="./assets/sths/icon-192.png" alt="STHS EventHub" class="pwa-install-icon" />
+      <div>
+        <strong>Install STHS EventHub App</strong>
+        <div style="font-size:0.75rem; opacity:0.9;">Instant access to Wits STHS agendas, live streams, QR check-in pass &amp; offline docs.</div>
+      </div>
+    </div>
+    <div class="pwa-install-actions">
+      <button type="button" id="pwaInstallBtn" class="pwa-install-btn">Install App</button>
+      <button type="button" id="pwaDismissBtn" class="pwa-dismiss-btn" aria-label="Dismiss install banner">✕</button>
+    </div>
+  </div>
+
+  <!-- Top Announcement Ribbon (EventsAir Editorial Rhythm) -->
+  <div class="hub-announcement-bar">
+    <span class="hub-announcement-dot" aria-hidden="true"></span>
+    <span><strong>Flagship Symposium:</strong> GO Game-On! Symposium 2027 (11–12 March 2027) — Call for Abstracts &amp; Registration Open.</span>
+    <a href="./game-on-symposium-2027/">Enter Symposium Platform →</a>
+  </div>
+
+  <!-- Crisp White Sticky Navigation Header -->
+  <header class="hub-header">
+    <div class="hub-header-inner">
+      <a href="./" class="hub-brand">
+        <img src="./assets/sths/sths-icon.svg" alt="Wits STHS Emblem" class="hub-brand-mark" />
+        <div class="hub-brand-text">
+          <span class="hub-brand-name">STHS <span>EventHub</span></span>
+          <span class="hub-brand-sub">Wits School of Therapeutic Sciences</span>
+        </div>
+      </a>
+
+      <nav class="hub-nav" aria-label="Primary navigation">
+        <a href="#events">Major Events</a>
+        <a href="#departments">Departments</a>
+        <a href="#capabilities">Platform</a>
+        <a href="#partnerships">Partnerships</a>
+      </nav>
+
+      <div class="hub-header-actions">
+        <button type="button" class="sths-btn sths-btn-outline sths-btn-sm" data-install-app-trigger style="display:none;">📲 Install App</button>
+        <button type="button" class="sths-btn sths-btn-outline sths-btn-sm" id="hubCreateEventBtn" style="display:none;">+ Publish Event</button>
+        <button type="button" class="hub-user-pill" id="hubAccountBtn">
+          <span class="hub-user-avatar" id="hubUserInitials">→</span>
+          <span id="hubUserLabel">Sign In / Register</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- Editorial Hero Section (EventsAir Inspired, Wits STHS Colors) -->
+    <section class="hub-hero">
+      <div class="hub-hero-inner">
+        <div class="hub-kicker-pill">
+          <span>University of the Witwatersrand</span>
+          <span>·</span>
+          <span>Faculty of Health Sciences</span>
+          <span>·</span>
+          <span>eFundanathi eZone</span>
+        </div>
+
+        <h1 class="hub-hero-title">
+          Run <em>transformative</em> Therapeutic Sciences events
+        </h1>
+
+        <p class="hub-hero-lead">
+          The unified hybrid conference, academic peer-review, and live delegate app for the
+          <strong>Wits School of Therapeutic Sciences</strong> — connecting researchers, clinicians, students,
+          and partner universities onsite in Parktown and online worldwide.
+        </p>
+
+        <div class="hub-hero-ctas">
+          <a href="./game-on-symposium-2027/" class="hub-cta-primary">
+            Launch GO Game-On! Symposium 2027 →
+          </a>
+          <a href="#events" class="hub-cta-link">
+            Explore All STHS Events →
+          </a>
+        </div>
+
+        <!-- Elevated Interactive Showcase Stage (Flagship Event Spotlight) -->
+        <div class="hub-stage-frame">
+          <div class="hub-stage-window">
+            <div class="hub-window-bar">
+              <div class="hub-window-dots" aria-hidden="true">
+                <span></span><span></span><span></span>
+              </div>
+              <div class="hub-window-url">witsezone.github.io/sthsevent/game-on-symposium-2027</div>
+              <div style="font-weight:700; color:var(--sths-teal-dark);">PWA · Hybrid Zoom &amp; MS Teams Ready</div>
+            </div>
+
+            <div class="hub-flagship-grid">
+              <div>
+                <span class="hub-flagship-badge">✦ Featured Flagship Event · Registration &amp; Abstracts Open</span>
+                <h2 class="hub-flagship-title">GO Game-On! Symposium 2027</h2>
+                <p class="hub-flagship-desc">
+                  <strong>Playing Our Stories:</strong> Educational, Digital &amp; Traditional Games for Learning,
+                  Teaching and Community. Hosted by Wits University, School of Therapeutic Sciences &amp; eFundanathi eZone,
+                  supported by ZAG &amp; DiGRA South Africa.
+                </p>
+                <div class="hub-flagship-meta">
+                  <span class="hub-meta-chip">📅 11–12 March 2027</span>
+                  <span class="hub-meta-chip">📍 eFundanathi eZone, Wits Education Campus</span>
+                  <span class="hub-meta-chip">📡 Zoom &amp; Microsoft Teams Hybrid</span>
+                  <span class="hub-meta-chip">⚖️ 4 Peer-Reviewed Tracks</span>
+                </div>
+                <div style="display:flex; gap:0.7rem; flex-wrap:wrap;">
+                  <a href="./game-on-symposium-2027/" class="sths-btn sths-btn-primary">Enter Event Platform →</a>
+                  <a href="./game-on-symposium-2027/#abstracts" class="sths-btn sths-btn-outline">Submit Abstract</a>
+                  <a href="./game-on-symposium-2027/#sponsors" class="sths-btn sths-btn-outline">Sponsorship Prospectus</a>
+                </div>
+              </div>
+
+              <div class="hub-flagship-visual">
+                <img src="./game-on-symposium-2027/assets/game-on-logo.svg" alt="GO Game-On! Symposium 2027 Logo" class="hub-flagship-logo" />
+                <div style="font-size:0.8rem; font-weight:800; color:var(--wits-navy); letter-spacing:0.06em; text-transform:uppercase;">
+                  Countdown to Opening Keynote
+                </div>
+                <div class="hub-countdown-mini" id="hubCountdown" aria-label="Countdown to 11 March 2027">
+                  <div class="hub-cd-box"><div class="hub-cd-num" id="hubCdDays">--</div><div class="hub-cd-lbl">Days</div></div>
+                  <div class="hub-cd-box"><div class="hub-cd-num" id="hubCdHours">--</div><div class="hub-cd-lbl">Hours</div></div>
+                  <div class="hub-cd-box"><div class="hub-cd-num" id="hubCdMins">--</div><div class="hub-cd-lbl">Mins</div></div>
+                  <div class="hub-cd-box"><div class="hub-cd-num" id="hubCdSecs">--</div><div class="hub-cd-lbl">Secs</div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Institutional Units Strip -->
+        <div class="hub-trust-strip">
+          <div class="hub-trust-label">Serving all five departments &amp; innovation units of the Wits School of Therapeutic Sciences</div>
+          <div class="hub-trust-pills">
+            <span class="hub-trust-pill">Nursing Education</span>
+            <span class="hub-trust-pill">Occupational Therapy</span>
+            <span class="hub-trust-pill">Pharmacy &amp; Pharmacology</span>
+            <span class="hub-trust-pill">Physiotherapy</span>
+            <span class="hub-trust-pill">Exercise Science &amp; Sports Medicine</span>
+            <span class="hub-trust-pill">eFundanathi eZone</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Major School of Therapeutic Sciences Events Directory -->
+    <section class="hub-section tinted" id="events">
+      <div class="hub-container">
+        <div class="hub-section-head">
+          <div>
+            <div class="hub-section-kicker">Official School Calendar &amp; Event Portals</div>
+            <h2 class="hub-section-title">Major <em>STHS</em> Events &amp; Symposia</h2>
+            <p class="hub-section-sub">
+              Select any School of Therapeutic Sciences conference, research day, or departmental symposium below
+              to enter its dedicated interactive platform or register your interest.
+            </p>
+          </div>
+          <div style="display:flex; gap:0.65rem; flex-wrap:wrap;">
+            <input type="search" id="hubEventSearch" class="sths-input" style="width:240px;" placeholder="Search events or department…" aria-label="Search school events" />
+          </div>
+        </div>
+
+        <div class="hub-filter-bar">
+          <div class="hub-chip-row" id="hubDeptFilterChips">
+            <button type="button" class="hub-chip active" data-dept="ALL">All STHS Events</button>
+            <button type="button" class="hub-chip" data-dept="eFundanathi">eFundanathi eZone</button>
+            <button type="button" class="hub-chip" data-dept="All 5 STHS">Cross-School</button>
+            <button type="button" class="hub-chip" data-dept="Nursing">Nursing</button>
+            <button type="button" class="hub-chip" data-dept="Occupational Therapy">Occupational Therapy</button>
+            <button type="button" class="hub-chip" data-dept="Pharmacy">Pharmacy &amp; Pharmacology</button>
+            <button type="button" class="hub-chip" data-dept="Physiotherapy">Physiotherapy</button>
+            <button type="button" class="hub-chip" data-dept="ESSM">Sports Medicine (ESSM)</button>
+          </div>
+          <span id="hubEventsCountLabel" style="font-size:0.82rem; font-weight:700; color:var(--text-muted);"></span>
+        </div>
+
+        <div class="hub-events-grid" id="hubEventsGrid"></div>
+      </div>
+    </section>
+
+    <!-- 5 Official Departments + eFundanathi eZone -->
+    <section class="hub-section" id="departments">
+      <div class="hub-container">
+        <div class="hub-section-head">
+          <div>
+            <div class="hub-section-kicker">Wits School of Therapeutic Sciences</div>
+            <h2 class="hub-section-title">Six hubs of <em>clinical</em> &amp; educational excellence</h2>
+            <p class="hub-section-sub">
+              Click any department or unit to filter upcoming symposia, CPD webinars, and interprofessional education showcases.
+            </p>
+          </div>
+          <a href="https://www.wits.ac.za/therapeuticsciences/" target="_blank" rel="noopener" class="sths-btn sths-btn-outline sths-btn-sm">
+            Official Wits STHS Website ↗
+          </a>
+        </div>
+
+        <div class="hub-dept-grid">
+          <button type="button" class="hub-dept-card" data-jump-dept="eFundanathi">
+            <div class="hub-dept-icon">🎲</div>
+            <h3>eFundanathi eZone ("Learn with us")</h3>
+            <p>Blended learning, serious games, XR clinical simulation, and educational innovation studio powering hybrid events across Wits.</p>
+          </button>
+          <button type="button" class="hub-dept-card" data-jump-dept="Nursing">
+            <div class="hub-dept-icon">🩺</div>
+            <h3>Department of Nursing Education</h3>
+            <p>Redefining the nursing profession through clinical leadership, postgraduate scholarship, and interprofessional education.</p>
+          </button>
+          <button type="button" class="hub-dept-card" data-jump-dept="Occupational Therapy">
+            <div class="hub-dept-icon">🧩</div>
+            <h3>Department of Occupational Therapy</h3>
+            <p>Community-centred rehabilitation, mental wellbeing interventions, assistive technologies, and youth-led health initiatives.</p>
+          </button>
+          <button type="button" class="hub-dept-card" data-jump-dept="Pharmacy">
+            <div class="hub-dept-icon">💊</div>
+            <h3>Department of Pharmacy &amp; Pharmacology</h3>
+            <p>Home to NRF A-rated researchers, WADDP drug delivery innovation, and CENTRIC nanopharmaceutical translational research.</p>
+          </button>
+          <button type="button" class="hub-dept-card" data-jump-dept="Physiotherapy">
+            <div class="hub-dept-icon">🏃</div>
+            <h3>Department of Physiotherapy</h3>
+            <p>Committed to academic and clinical excellence in movement rehabilitation, cardiorespiratory care, and patient safety.</p>
+          </button>
+          <button type="button" class="hub-dept-card" data-jump-dept="ESSM">
+            <div class="hub-dept-icon">🏅</div>
+            <h3>Exercise Science &amp; Sports Medicine (ESSM)</h3>
+            <p>Exercise is Medicine Gold Campus &amp; Wits Sports Clinic advancing sports medicine, oncology exercise science, and physical activity advocacy.</p>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- EventsAir-Inspired 4-Pillar Lifecycle Section -->
+    <section class="hub-section tinted" id="capabilities">
+      <div class="hub-container">
+        <div class="hub-section-head">
+          <div>
+            <div class="hub-section-kicker">One Unified University Event Platform</div>
+            <h2 class="hub-section-title">Engineered for <em>hybrid</em> academic excellence</h2>
+            <p class="hub-section-sub">
+              Combining the cleanest workflows of EventsAir, Whova, EasyChair, and Cvent — built specifically for
+              Wits School of Therapeutic Sciences with Supabase Auth, Storage, and Realtime.
+            </p>
+          </div>
+        </div>
+
+        <div class="hub-pillars-grid">
+          <article class="hub-pillar-card">
+            <span class="hub-pillar-num">01 · PLAN &amp; REVIEW</span>
+            <h3>Academic Submissions &amp; Peer Review</h3>
+            <p>Structured multi-track call for abstracts, blind rubric scoring, conflict-of-interest checks, and author revisions.</p>
+            <ul class="hub-pillar-list">
+              <li>Track-routed PDF, slide deck &amp; game build uploads</li>
+              <li>4-criterion scientific committee scorecard</li>
+              <li>1-click promotion of accepted talks to agenda</li>
+            </ul>
+          </article>
+
+          <article class="hub-pillar-card">
+            <span class="hub-pillar-num">02 · ENGAGE</span>
+            <h3>App-Like Experience on Every Device</h3>
+            <p>Installable Progressive Web App with automatic mobile/desktop layout switching — no app store download barrier.</p>
+            <ul class="hub-pillar-list">
+              <li>Personal QR Check-In Pass &amp; `.ICS` calendar sync</li>
+              <li>Inter-university networking &amp; direct messaging</li>
+              <li>Campus + Online Amazing Race &amp; QR Scavenger Hunt</li>
+            </ul>
+          </article>
+
+          <article class="hub-pillar-card">
+            <span class="hub-pillar-num">03 · DELIVER</span>
+            <h3>Seamless On-Ground &amp; Online Hybrid</h3>
+            <p>Equitable participation for delegates in the Parktown auditorium and colleagues joining from anywhere in the world.</p>
+            <ul class="hub-pillar-list">
+              <li>Zoom &amp; Microsoft Teams multi-stage integration</li>
+              <li>Realtime upvotable Q&amp;A &amp; live audience polls</li>
+              <li>Instant slide decks, rulebooks &amp; session docs</li>
+            </ul>
+          </article>
+
+          <article class="hub-pillar-card">
+            <span class="hub-pillar-num">04 · PARTNER &amp; SCALE</span>
+            <h3>Sponsors, Exhibitors &amp; New Events</h3>
+            <p>Reusable multi-event architecture so every STHS department can launch branded sub-sites in minutes.</p>
+            <ul class="hub-pillar-list">
+              <li>Interactive 3D Sponsorship Prospectus Flipbook</li>
+              <li>Exhibitor lead capture &amp; partner ROI metrics</li>
+              <li>Clean `/sthsevent/&lt;event-slug&gt;` routing</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- University Sponsorship & Partnership Band -->
+    <section class="hub-section" id="partnerships">
+      <div class="hub-container">
+        <div class="hub-partner-band">
+          <div style="position:relative; z-index:2;">
+            <span style="display:inline-block; background:rgba(197,150,39,0.22); color:#f7dc92; border:1px solid rgba(197,150,39,0.45); padding:0.28rem 0.85rem; border-radius:999px; font-size:0.75rem; font-weight:800; letter-spacing:0.06em; text-transform:uppercase; margin-bottom:0.9rem;">
+              University &amp; Industry Partnerships
+            </span>
+            <h2 style="font-family:var(--font-editorial); font-size:clamp(2rem, 3.8vw, 3rem); font-weight:400; margin:0 0 0.75rem; line-height:1.1;">
+              Partner with Wits Therapeutic Sciences &amp; eFundanathi eZone
+            </h2>
+            <p style="margin:0 0 1.4rem; color:#d7e8ee; font-size:0.96rem; max-width:580px;">
+              Sponsor flagship symposia, equip clinical simulation labs, exhibit your educational technologies,
+              or co-fund student research awards across South Africa's premier health sciences school.
+            </p>
+            <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
+              <a href="./game-on-symposium-2027/#sponsors" class="sths-btn sths-btn-gold">Open 2027 Sponsorship Prospectus →</a>
+              <a href="mailto:help.efundanathi@wits.ac.za?subject=Wits%20STHS%20Event%20Partnership%20Enquiry" class="sths-btn" style="background:rgba(255,255,255,0.14); color:#fff; border-color:rgba(255,255,255,0.3);">
+                Contact Partnerships Desk
+              </a>
+            </div>
+          </div>
+
+          <div style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); border-radius:20px; padding:1.5rem; position:relative; z-index:2;">
+            <div style="font-size:0.75rem; font-weight:800; text-transform:uppercase; letter-spacing:0.08em; color:#f7dc92; margin-bottom:0.5rem;">
+              Sponsorship &amp; Events Office
+            </div>
+            <div style="font-weight:800; font-size:1.05rem; margin-bottom:0.25rem;">Amanda Jankowitz · eFundanathi eZone</div>
+            <div style="font-size:0.86rem; color:#d7e8ee; margin-bottom:0.9rem;">School of Therapeutic Sciences · Faculty of Health Sciences</div>
+            <div style="display:flex; flex-direction:column; gap:0.4rem; font-size:0.86rem;">
+              <a href="mailto:help.efundanathi@wits.ac.za" style="color:#fff; font-weight:700; text-decoration:none;">✉️ help.efundanathi@wits.ac.za</a>
+              <a href="mailto:efundanathi.ezone@wits.ac.za" style="color:#fff; font-weight:700; text-decoration:none;">✉️ efundanathi.ezone@wits.ac.za</a>
+              <a href="tel:+27117173259" style="color:#f7dc92; font-weight:700; text-decoration:none;">📞 +27 11 717 3259</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Official Institutional Footer -->
+  <footer class="hub-footer">
+    <div class="hub-footer-grid">
+      <div>
+        <div style="display:flex; align-items:center; gap:0.65rem; margin-bottom:0.85rem;">
+          <img src="./assets/sths/sths-icon.svg" alt="STHS" style="width:36px; height:36px; border-radius:9px;" />
+          <div>
+            <div style="color:#fff; font-weight:800; font-size:1.02rem;">STHS EventHub</div>
+            <div style="font-size:0.75rem; color:#9bb5c7;">University of the Witwatersrand, Johannesburg</div>
+          </div>
+        </div>
+        <p style="font-size:0.84rem; line-height:1.6; margin:0; max-width:340px;">
+          Official hybrid events, abstract review, and delegate engagement platform for the School of Therapeutic Sciences
+          and eFundanathi eZone.
+        </p>
+      </div>
+
+      <div>
+        <h4>Flagship Portals</h4>
+        <ul>
+          <li><a href="./game-on-symposium-2027/">GO Game-On! Symposium 2027</a></li>
+          <li><a href="./game-on-symposium-2027/#abstracts">Call for Abstracts &amp; Uploads</a></li>
+          <li><a href="./game-on-symposium-2027/#sponsors">2027 Sponsorship Prospectus</a></li>
+          <li><a href="#events">All STHS Major Events</a></li>
+        </ul>
+      </div>
+
+      <div>
+        <h4>STHS Departments</h4>
+        <ul>
+          <li><a href="https://www.wits.ac.za/therapeuticsciences/departments/" target="_blank" rel="noopener">Nursing Education</a></li>
+          <li><a href="https://www.wits.ac.za/therapeuticsciences/departments/" target="_blank" rel="noopener">Occupational Therapy</a></li>
+          <li><a href="https://www.wits.ac.za/therapeuticsciences/departments/" target="_blank" rel="noopener">Pharmacy &amp; Pharmacology</a></li>
+          <li><a href="https://www.wits.ac.za/therapeuticsciences/departments/" target="_blank" rel="noopener">Physiotherapy &amp; ESSM</a></li>
+        </ul>
+      </div>
+
+      <div>
+        <h4>Contact &amp; Venue</h4>
+        <ul>
+          <li>Wits Education Campus, Parktown</li>
+          <li>Johannesburg, South Africa</li>
+          <li><a href="mailto:help.efundanathi@wits.ac.za">help.efundanathi@wits.ac.za</a></li>
+          <li><a href="tel:+27117173259">+27 11 717 3259</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="hub-footer-bottom">
+      <span>Copyright &copy; 2026 University of the Witwatersrand — School of Therapeutic Sciences. All rights reserved.</span>
+      <button type="button" id="hubSupabaseStatusBtn" style="background:none;border:none;color:#9bb5c7;font-size:0.78rem;cursor:pointer;text-decoration:underline;">
+        Platform Backend Status
+      </button>
+    </div>
+  </footer>
+
+  <!-- Native Mobile Bottom App Navigation Dock -->
+  <nav class="mobile-app-dock" aria-label="Mobile quick navigation">
+    <a href="#top" class="dock-item active" data-hub-dock="home">
+      <span class="dock-icon">🏠</span><span>Home</span>
+    </a>
+    <a href="#events" class="dock-item" data-hub-dock="events">
+      <span class="dock-icon">📅</span><span>Events</span>
+    </a>
+    <a href="./game-on-symposium-2027/" class="dock-item" data-hub-dock="gameon">
+      <span class="dock-icon">🎲</span><span>Game-On!</span>
+      <span class="dock-live-dot" aria-hidden="true"></span>
+    </a>
+    <a href="#departments" class="dock-item" data-hub-dock="depts">
+      <span class="dock-icon">🏛️</span><span>Depts</span>
+    </a>
+    <button type="button" class="dock-item" id="hubDockAccountBtn">
+      <span class="dock-icon">👤</span><span>Account</span>
+    </button>
+  </nav>
+
+  <!-- Event Detail & Pre-Registration Modal (For School Events Without Separate Sub-Site Yet) -->
+  <div class="sths-modal-backdrop" id="hubEventDetailModal">
+    <div class="sths-modal wide" role="dialog" aria-modal="true" aria-labelledby="hubDetailTitle">
+      <div class="sths-modal-header">
+        <div>
+          <span id="hubDetailBadge" class="hub-status-pill upcoming"></span>
+          <h3 id="hubDetailTitle" class="sths-modal-title" style="margin-top:0.45rem;"></h3>
+          <p id="hubDetailDept" class="sths-modal-subtitle"></p>
+        </div>
+        <button type="button" class="sths-modal-close" data-close-hub-modal="hubEventDetailModal" aria-label="Close">✕</button>
+      </div>
+      <div id="hubDetailBody"></div>
+    </div>
+  </div>
+
+  <!-- Organizer Studio: Publish New STHS Event Modal -->
+  <div class="sths-modal-backdrop" id="hubCreateEventModal">
+    <div class="sths-modal wide" role="dialog" aria-modal="true" aria-labelledby="hubCreateTitle">
+      <div class="sths-modal-header">
+        <div>
+          <h3 id="hubCreateTitle" class="sths-modal-title">Publish a New Wits STHS Event</h3>
+          <p class="sths-modal-subtitle">Add an official School of Therapeutic Sciences symposium, research day, or workshop directly to STHS EventHub.</p>
+        </div>
+        <button type="button" class="sths-modal-close" data-close-hub-modal="hubCreateEventModal" aria-label="Close">✕</button>
+      </div>
+      <form id="hubCreateEventForm">
+        <div class="sths-form-row">
+          <div class="sths-form-group">
+            <label class="sths-label" for="newEvTitle">Event Title *</label>
+            <input id="newEvTitle" type="text" class="sths-input" placeholder="e.g., Wits Nursing Leadership Forum 2027" required />
+          </div>
+          <div class="sths-form-group">
+            <label class="sths-label" for="newEvSlug">URL Slug (sthsevent/&lt;slug&gt;) *</label>
+            <input id="newEvSlug" type="text" class="sths-input" pattern="[a-z0-9-]+" placeholder="e.g., nursing-leadership-2027" required />
+          </div>
+        </div>
+        <div class="sths-form-row">
+          <div class="sths-form-group">
+            <label class="sths-label" for="newEvDept">Department / Unit *</label>
+            <select id="newEvDept" class="sths-select">
+              <option value="All 5 STHS Departments">All 5 STHS Departments</option>
+              <option value="eFundanathi eZone & Cross-School">eFundanathi eZone &amp; Cross-School</option>
+              <option value="Department of Nursing Education">Department of Nursing Education</option>
+              <option value="Department of Occupational Therapy">Department of Occupational Therapy</option>
+              <option value="Department of Pharmacy & Pharmacology">Department of Pharmacy &amp; Pharmacology</option>
+              <option value="Department of Physiotherapy">Department of Physiotherapy</option>
+              <option value="Exercise Science & Sports Medicine (ESSM)">Exercise Science &amp; Sports Medicine (ESSM)</option>
+            </select>
+          </div>
+          <div class="sths-form-group">
+            <label class="sths-label" for="newEvDateLabel">Date Display *</label>
+            <input id="newEvDateLabel" type="text" class="sths-input" placeholder="e.g., 14–15 October 2027" required />
+          </div>
+        </div>
+        <div class="sths-form-row">
+          <div class="sths-form-group">
+            <label class="sths-label" for="newEvVenue">Venue &amp; Hybrid Platform *</label>
+            <input id="newEvVenue" type="text" class="sths-input" placeholder="Wits Health Sciences Campus & MS Teams" required />
+          </div>
+          <div class="sths-form-group">
+            <label class="sths-label" for="newEvStatus">Status</label>
+            <select id="newEvStatus" class="sths-select">
+              <option value="registration_open">Registration Open</option>
+              <option value="upcoming">Upcoming</option>
+              <option value="active">Live Now</option>
+            </select>
+          </div>
+        </div>
+        <div class="sths-form-group">
+          <label class="sths-label" for="newEvTagline">Theme / Tagline *</label>
+          <input id="newEvTagline" type="text" class="sths-input" required />
+        </div>
+        <div class="sths-form-group">
+          <label class="sths-label" for="newEvDesc">Description *</label>
+          <textarea id="newEvDesc" class="sths-textarea" rows="3" required></textarea>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:0.65rem; margin-top:0.75rem;">
+          <button type="button" class="sths-btn sths-btn-outline sths-btn-sm" data-close-hub-modal="hubCreateEventModal">Cancel</button>
+          <button type="submit" class="sths-btn sths-btn-primary">Publish to STHS EventHub</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Pinned Production Dependencies -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.2/dist/umd/supabase.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+  <script src="./js/supabase-config.js"></script>
+  <script src="./js/device-app.js"></script>
+  <script src="./js/auth.js"></script>
+  <script src="./js/hub-app.js"></script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+{
+  "name": "GO Game-On! Symposium 2027 · STHS EventHub",
+  "short_name": "Game-On! 2027",
+  "description": "Official Hybrid Conference App for GO Game-On! Symposium 2027 (11–12 March 2027) — Wits School of Therapeutic Sciences & eFundanathi eZone.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#FAF6EE",
+  "theme_color": "#17787E",
+  "categories": ["education", "events", "games"],
+  "icons": [
+    {
+      "src": "./assets/pwa-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./assets/pwa-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

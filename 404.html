@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Redirecting · STHS EventHub</title>
+  <script>
+    (function () {
+      var p = window.location.pathname.toLowerCase();
+      if (p.indexOf("game-on-symposium-2027") !== -1) {
+        var base = window.location.pathname.split(/game-on-symposium-2027/i)[0];
+        window.location.replace(base + "game-on-symposium-2027/" + window.location.search + window.location.hash);
+      } else {
+        window.location.replace("./index.html" + window.location.search + window.location.hash);
+      }
+    })();
+  </script>
+</head>
+<body style="font-family:system-ui,sans-serif;padding:2rem;color:#003B5C;">
+  <p>Redirecting to <strong>STHS EventHub</strong>…</p>
+</body>
+</html>
