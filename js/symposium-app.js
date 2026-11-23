@@ -264,25 +264,31 @@
       state.directMessages = dmRes.data || [];
       state.myQaUpvotes = new Set((upvRes.data || []).map((r) => r.question_id));
 
-      // Load reviews for my abstracts & reviewer queue
+      // Load reviews for my abstracts (anonymized double-blind RPC) & reviewer queue
+      state.reviewMap = {};
       if (window.STHS_AUTH.isReviewer()) {
         const [allAbsRes, allRevRes] = await Promise.all([
           sb.from("abstracts").select("*").eq("event_id", ev.id).order("created_at", { ascending: false }),
           sb.from("abstract_reviews").select("*").eq("event_id", ev.id).order("created_at", { ascending: false })
         ]);
         state.reviewAbstracts = allAbsRes.data || [];
-        state.reviewMap = {};
         (allRevRes.data || []).forEach((rev) => {
           if (!state.reviewMap[rev.abstract_id]) state.reviewMap[rev.abstract_id] = [];
           state.reviewMap[rev.abstract_id].push(rev);
         });
+        if (state.myAbstracts.length && !window.STHS_AUTH.isCommittee()) {
+          const { data: myFeedback } = await sb.rpc("get_my_abstract_feedback", { p_event_id: ev.id });
+          (myFeedback || []).forEach((rev) => {
+            if (!state.reviewMap[rev.abstract_id]) state.reviewMap[rev.abstract_id] = [];
+            const exists = state.reviewMap[rev.abstract_id].some((x) => x.created_at === rev.created_at && x.author_feedback === rev.author_feedback);
+            if (!exists) state.reviewMap[rev.abstract_id].push(rev);
+          });
+        }
         if (!state.activeReviewAbstractId && state.reviewAbstracts.length) {
           state.activeReviewAbstractId = state.reviewAbstracts[0].id;
         }
       } else if (state.myAbstracts.length) {
-        const myIds = state.myAbstracts.map((a) => a.id);
-        const { data: myRevs } = await sb.from("abstract_reviews").select("*").in("abstract_id", myIds);
-        state.reviewMap = {};
+        const { data: myRevs } = await sb.rpc("get_my_abstract_feedback", { p_event_id: ev.id });
         (myRevs || []).forEach((rev) => {
           if (!state.reviewMap[rev.abstract_id]) state.reviewMap[rev.abstract_id] = [];
           state.reviewMap[rev.abstract_id].push(rev);

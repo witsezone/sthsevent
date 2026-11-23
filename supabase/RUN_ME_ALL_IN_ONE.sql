@@ -1589,8 +1589,489 @@ where lower(email) = 'spha.msimang@wits.ac.za';
 
 
 -- =============================================================================
--- PART 2: OFFICIAL CLEAN PRODUCTION SEED
+-- STHS EventHub — Migration 0002: Foreign-Key Indexes & Hardened Security Guards
+-- Applied to Supabase project ryabexxorzpsuvdfxzyo (sths-eventhub)
 -- =============================================================================
+
+-- 1. Harden identity & anti-escalation trigger functions
+create or replace function private.guard_profile_role()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_caller_role text;
+  v_auth_email text;
+  v_is_root boolean;
+begin
+  if current_user in ('postgres', 'service_role') or current_setting('app.sths_rbac_bypass', true) = 'on' then
+    new.updated_at := now();
+    return new;
+  end if;
+
+  select email into v_auth_email from auth.users where id = new.id;
+  v_is_root := lower(trim(coalesce(v_auth_email, ''))) = 'spha.msimang@wits.ac.za';
+
+  if tg_op = 'INSERT' then
+    new.email := coalesce(v_auth_email, new.email, '');
+    if v_is_root then
+      new.platform_role := 'super_admin';
+      new.requested_platform_role := '';
+      new.approval_status := 'approved';
+    else
+      new.platform_role := 'member';
+      if new.requested_platform_role in ('planning_committee', 'super_admin') then
+        new.approval_status := 'pending';
+      else
+        new.requested_platform_role := '';
+        new.approval_status := 'approved';
+      end if;
+    end if;
+    new.updated_at := now();
+    return new;
+  end if;
+
+  -- Lock email to authoritative auth.users record (prevents email-spoofing elevation)
+  new.email := coalesce(v_auth_email, old.email);
+
+  if v_is_root then
+    if new.platform_role <> 'super_admin' then
+      raise exception 'Primary Super Admin account (spha.msimang@wits.ac.za) cannot be demoted';
+    end if;
+    new.requested_platform_role := '';
+    new.approval_status := 'approved';
+    new.updated_at := now();
+    return new;
+  end if;
+
+  select p.platform_role into v_caller_role
+  from public.profiles p
+  where p.id = (select auth.uid());
+
+  if coalesce(v_caller_role, '') <> 'super_admin' then
+    if new.platform_role is distinct from old.platform_role then
+      raise exception 'Only an approved Super Admin can modify platform access levels';
+    end if;
+
+    if new.requested_platform_role is distinct from old.requested_platform_role
+       and new.requested_platform_role in ('planning_committee', 'super_admin') then
+      new.approval_status := 'pending';
+    else
+      new.approval_status := old.approval_status;
+    end if;
+  end if;
+
+  new.updated_at := now();
+  return new;
+end;
+$$;
+
+create or replace function private.guard_registration_mutation()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user_email text;
+  v_user_platform_role text;
+  v_is_org boolean;
+  v_privileged text[] := array['sponsor', 'volunteer', 'session_chair', 'reviewer', 'planning_committee', 'super_admin'];
+begin
+  if current_user in ('postgres', 'service_role') or current_setting('app.sths_rbac_bypass', true) = 'on' then
+    new.updated_at := now();
+    return new;
+  end if;
+
+  select u.email into v_user_email from auth.users u where u.id = new.user_id;
+  select p.platform_role into v_user_platform_role from public.profiles p where p.id = new.user_id;
+
+  if lower(trim(coalesce(v_user_email, ''))) = 'spha.msimang@wits.ac.za'
+     or coalesce(v_user_platform_role, '') = 'super_admin' then
+    new.role := 'super_admin';
+    new.requested_role := '';
+    new.approval_status := 'approved';
+    new.updated_at := now();
+    return new;
+  end if;
+
+  v_is_org := private.is_event_organizer(new.event_id);
+
+  if tg_op = 'INSERT' then
+    if not v_is_org then
+      new.xp_points := 100;
+      new.checked_in := false;
+      new.checked_in_at := null;
+      new.approved_by := null;
+      new.approved_at := null;
+      if new.role = any(v_privileged) then
+        new.requested_role := new.role;
+        new.role := 'delegate';
+        new.approval_status := 'pending';
+      elsif new.requested_role = any(v_privileged) then
+        new.role := coalesce(nullif(new.role, ''), 'delegate');
+        new.approval_status := 'pending';
+      else
+        new.approval_status := 'approved';
+      end if;
+    end if;
+  elsif tg_op = 'UPDATE' then
+    if not v_is_org then
+      new.xp_points := old.xp_points;
+      new.badge_code := old.badge_code;
+      new.checked_in := old.checked_in;
+      new.checked_in_at := old.checked_in_at;
+      new.approved_by := old.approved_by;
+      new.approved_at := old.approved_at;
+
+      if new.role is distinct from old.role and new.role = any(v_privileged) then
+        new.requested_role := new.role;
+        new.role := old.role;
+        new.approval_status := 'pending';
+      elsif new.requested_role is distinct from old.requested_role and new.requested_role = any(v_privileged) then
+        new.approval_status := 'pending';
+      else
+        new.approval_status := old.approval_status;
+      end if;
+    end if;
+    new.updated_at := now();
+  end if;
+
+  return new;
+end;
+$$;
+
+create or replace function private.guard_abstract_mutation()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_is_org boolean;
+begin
+  if current_user in ('postgres', 'service_role') or current_setting('app.sths_rbac_bypass', true) = 'on' then
+    new.updated_at := now();
+    return new;
+  end if;
+
+  v_is_org := private.is_event_organizer(new.event_id);
+
+  if not v_is_org then
+    if tg_op = 'INSERT' then
+      new.status := 'submitted';
+      new.promoted_session_id := null;
+    elsif tg_op = 'UPDATE' then
+      new.promoted_session_id := old.promoted_session_id;
+      if new.status is distinct from old.status then
+        if not (old.status = 'revision_requested' and new.status = 'under_review') then
+          raise exception 'Only approved Planning Committee or Super Admin organizers can change abstract review decisions.';
+        end if;
+      end if;
+    end if;
+  end if;
+
+  new.updated_at := now();
+  return new;
+end;
+$$;
+
+create or replace trigger trg_guard_profile_role
+  before insert or update on public.profiles
+  for each row execute function private.guard_profile_role();
+
+create or replace trigger trg_guard_abstract_mutation
+  before insert or update on public.abstracts
+  for each row execute function private.guard_abstract_mutation();
+
+-- 2. Double-blind author feedback RPC
+create or replace function public.get_my_abstract_feedback(p_event_id uuid)
+returns table (
+  abstract_id uuid,
+  weighted_average numeric(3,2),
+  recommendation text,
+  author_feedback text,
+  has_conflict_of_interest boolean,
+  created_at timestamptz
+)
+language sql
+security definer
+stable
+set search_path = ''
+as $$
+  select
+    ar.abstract_id,
+    ar.weighted_average,
+    ar.recommendation,
+    ar.author_feedback,
+    ar.has_conflict_of_interest,
+    ar.created_at
+  from public.abstract_reviews ar
+  join public.abstracts a on a.id = ar.abstract_id
+  where a.event_id = p_event_id
+    and a.author_id = (select auth.uid())
+    and ar.has_conflict_of_interest = false
+  order by ar.created_at asc;
+$$;
+
+-- 3. Fix anon 401 on 5 public tables (split anon vs authenticated SELECT policies)
+alter policy "events_public_read" on public.events to authenticated using (is_published = true or private.is_platform_organizer());
+create policy "events_anon_read" on public.events for select to anon using (is_published = true);
+
+alter policy "sessions_public_read" on public.sessions to authenticated using (is_published = true or private.is_event_organizer(event_id));
+create policy "sessions_anon_read" on public.sessions for select to anon using (is_published = true);
+
+alter policy "docs_public_read" on public.event_documents to authenticated using (is_public = true or (select auth.uid()) = uploaded_by or private.is_event_organizer(event_id));
+create policy "docs_anon_read" on public.event_documents for select to anon using (is_public = true);
+
+alter policy "quests_public_read" on public.gamification_quests to authenticated using (is_active = true or private.is_event_organizer(event_id));
+create policy "quests_anon_read" on public.gamification_quests for select to anon using (is_active = true);
+
+alter policy "booths_public_read" on public.sponsor_booths to authenticated using (is_published = true or private.is_event_organizer(event_id) or (select auth.uid()) = owner_user_id);
+create policy "booths_anon_read" on public.sponsor_booths for select to anon using (is_published = true);
+
+-- 4. Tighten existing RLS policies
+alter policy "qa_auth_insert" on public.live_qa_questions
+  with check ((select auth.uid()) = author_id and upvote_count = 0 and is_answered = false);
+
+alter policy "reviews_select_authorized" on public.abstract_reviews
+  using ((select auth.uid()) = reviewer_id or private.is_event_organizer(event_id));
+
+alter policy "reviews_update_own_reviewer" on public.abstract_reviews
+  using (((select auth.uid()) = reviewer_id and private.is_event_reviewer(event_id)) or private.is_event_organizer(event_id))
+  with check (((select auth.uid()) = reviewer_id and private.is_event_reviewer(event_id)) or private.is_event_organizer(event_id));
+
+alter policy "dm_insert_sender" on public.direct_messages
+  with check ((select auth.uid()) = sender_id and is_read = false);
+
+alter policy "booths_org_manage" on public.sponsor_booths
+  using (private.is_event_organizer(event_id) or ((select auth.uid()) = owner_user_id and private.is_event_sponsor(event_id)))
+  with check (private.is_event_organizer(event_id) or ((select auth.uid()) = owner_user_id and private.is_event_sponsor(event_id)));
+
+alter policy "inquiries_insert_any" on public.sponsor_inquiries
+  to authenticated
+  with check (
+    (submitted_by is null or submitted_by = (select auth.uid()))
+    and status = 'new'
+    and char_length(trim(organization_name)) > 0
+    and char_length(trim(work_email)) > 3
+  );
+create policy "inquiries_anon_insert" on public.sponsor_inquiries
+  for insert to anon
+  with check (
+    submitted_by is null
+    and status = 'new'
+    and char_length(trim(organization_name)) > 0
+    and char_length(trim(work_email)) > 3
+  );
+
+alter policy "storage_sub_select_own_or_org" on storage.objects
+  using (
+    bucket_id = 'event-submissions'
+    and (
+      (storage.foldername(name))[1] = (select auth.uid())::text
+      or private.is_platform_organizer()
+      or exists (
+        select 1 from public.abstracts a
+        where a.abstract_file_url = name
+          and private.is_event_reviewer(a.event_id)
+      )
+    )
+  );
+
+-- 5. Add all 24 missing covering foreign-key indexes
+create index if not exists idx_abstract_reviews_event on public.abstract_reviews (event_id);
+create index if not exists idx_abstracts_promoted_session on public.abstracts (promoted_session_id);
+create index if not exists idx_direct_messages_event on public.direct_messages (event_id);
+create index if not exists idx_event_documents_session on public.event_documents (session_id);
+create index if not exists idx_event_documents_uploaded_by on public.event_documents (uploaded_by);
+create index if not exists idx_event_registrations_approved_by on public.event_registrations (approved_by);
+create index if not exists idx_events_created_by on public.events (created_by);
+create index if not exists idx_live_poll_votes_event on public.live_poll_votes (event_id);
+create index if not exists idx_live_poll_votes_user on public.live_poll_votes (user_id);
+create index if not exists idx_live_polls_stage on public.live_polls (stage_id);
+create index if not exists idx_live_qa_questions_author on public.live_qa_questions (author_id);
+create index if not exists idx_live_qa_questions_event on public.live_qa_questions (event_id);
+create index if not exists idx_live_qa_upvotes_user on public.live_qa_upvotes (user_id);
+create index if not exists idx_quest_completions_event on public.quest_completions (event_id);
+create index if not exists idx_role_audit_log_actor on public.role_audit_log (actor_id);
+create index if not exists idx_role_audit_log_event on public.role_audit_log (event_id);
+create index if not exists idx_role_audit_log_target_user on public.role_audit_log (target_user_id);
+create index if not exists idx_saved_sessions_event on public.saved_sessions (event_id);
+create index if not exists idx_session_checkins_event on public.session_checkins (event_id);
+create index if not exists idx_sessions_created_by on public.sessions (created_by);
+create index if not exists idx_sponsor_booths_owner on public.sponsor_booths (owner_user_id);
+create index if not exists idx_sponsor_inquiries_submitted_by on public.sponsor_inquiries (submitted_by);
+create index if not exists idx_sponsor_leads_event on public.sponsor_leads (event_id);
+create index if not exists idx_sponsor_leads_user on public.sponsor_leads (user_id);
+
+
+-- =============================================================================
+-- STHS EventHub — Migration 0003: Additional Mutation Guards & Function Revokes
+-- Applied to Supabase project ryabexxorzpsuvdfxzyo (sths-eventhub)
+-- =============================================================================
+
+-- 1. Revoke anon/public execution on get_my_abstract_feedback (authenticated only)
+revoke all on function public.get_my_abstract_feedback(uuid) from public, anon;
+grant execute on function public.get_my_abstract_feedback(uuid) to authenticated;
+
+-- 2. Prevent recipient from modifying message content/metadata on direct_messages (is_read only)
+create or replace function private.guard_dm_update()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if current_user in ('postgres', 'service_role') then
+    return new;
+  end if;
+  new.event_id := old.event_id;
+  new.sender_id := old.sender_id;
+  new.recipient_id := old.recipient_id;
+  new.message_text := old.message_text;
+  new.created_at := old.created_at;
+  return new;
+end;
+$$;
+
+create or replace trigger trg_guard_dm_update
+  before update on public.direct_messages
+  for each row execute function private.guard_dm_update();
+
+-- 3. Restrict sponsor_booths INSERT/DELETE strictly to event organizers
+create or replace function private.guard_booth_mutation()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_event_id uuid := coalesce(new.event_id, old.event_id);
+begin
+  if current_user in ('postgres', 'service_role') then
+    return coalesce(new, old);
+  end if;
+
+  if not private.is_event_organizer(v_event_id) then
+    if tg_op = 'INSERT' then
+      raise exception 'Only approved Planning Committee or Super Admin organizers can create sponsor booths.';
+    elsif tg_op = 'DELETE' then
+      raise exception 'Only approved Planning Committee or Super Admin organizers can delete sponsor booths.';
+    elsif tg_op = 'UPDATE' then
+      new.owner_user_id := old.owner_user_id;
+      new.tier := old.tier;
+      new.event_id := old.event_id;
+    end if;
+  end if;
+
+  return coalesce(new, old);
+end;
+$$;
+
+create or replace trigger trg_guard_booth_mutation
+  before insert or update or delete on public.sponsor_booths
+  for each row execute function private.guard_booth_mutation();
+
+-- 4. Update admin_update_user_access to check authoritative auth.users.email
+create or replace function public.admin_update_user_access(
+  p_target_user_id uuid,
+  p_event_id uuid,
+  p_new_event_role text,
+  p_new_platform_role text default null,
+  p_approval_status text default 'approved',
+  p_note text default ''
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_actor uuid := (select auth.uid());
+  v_actor_is_super boolean := private.is_super_admin();
+  v_actor_is_comm boolean := (p_event_id is not null and private.is_event_organizer(p_event_id)) or private.is_platform_organizer();
+  v_target_prof record;
+  v_target_auth_email text;
+  v_old_ev_role text := '';
+  v_final_plat text;
+  v_final_ev text;
+begin
+  if v_actor is null or not (v_actor_is_super or v_actor_is_comm) then
+    return jsonb_build_object('ok', false, 'error', 'Only approved Super Admins or Planning Committee members can manage access.');
+  end if;
+
+  select * into v_target_prof from public.profiles where id = p_target_user_id;
+  if not found then
+    return jsonb_build_object('ok', false, 'error', 'User profile not found.');
+  end if;
+
+  select u.email into v_target_auth_email from auth.users u where u.id = p_target_user_id;
+
+  if lower(trim(coalesce(v_target_auth_email, v_target_prof.email))) = 'spha.msimang@wits.ac.za'
+     and (coalesce(p_new_platform_role, 'super_admin') <> 'super_admin' or p_new_event_role <> 'super_admin') then
+    return jsonb_build_object('ok', false, 'error', 'Primary Super Admin (spha.msimang@wits.ac.za) cannot be demoted.');
+  end if;
+
+  if not v_actor_is_super then
+    if v_target_prof.platform_role = 'super_admin' then
+      return jsonb_build_object('ok', false, 'error', 'Only a Super Admin can modify another Super Admin account.');
+    end if;
+    if p_new_event_role in ('super_admin', 'planning_committee') or coalesce(p_new_platform_role, '') in ('super_admin', 'planning_committee') then
+      return jsonb_build_object('ok', false, 'error', 'Only a Super Admin can grant Super Admin or Planning Committee access.');
+    end if;
+  end if;
+
+  v_final_ev := case when p_approval_status = 'declined' then 'delegate' else p_new_event_role end;
+  v_final_plat := coalesce(
+    nullif(p_new_platform_role, ''),
+    case
+      when v_final_ev = 'super_admin' then 'super_admin'
+      when v_final_ev = 'planning_committee' then 'planning_committee'
+      else v_target_prof.platform_role
+    end
+  );
+  if p_approval_status = 'declined' and v_target_prof.platform_role = 'member' then
+    v_final_plat := 'member';
+  end if;
+
+  select role into v_old_ev_role from public.event_registrations where event_id = p_event_id and user_id = p_target_user_id;
+
+  perform set_config('app.sths_rbac_bypass', 'on', true);
+
+  update public.profiles
+  set platform_role = v_final_plat,
+      requested_platform_role = '',
+      approval_status = case when p_approval_status = 'declined' then 'approved' else p_approval_status end,
+      updated_at = now()
+  where id = p_target_user_id;
+
+  if p_event_id is not null then
+    insert into public.event_registrations (event_id, user_id, role, requested_role, approval_status, approval_note, approved_by, approved_at)
+    values (p_event_id, p_target_user_id, v_final_ev, '', p_approval_status, coalesce(p_note, ''), v_actor, now())
+    on conflict (event_id, user_id) do update
+      set role = v_final_ev,
+          requested_role = '',
+          approval_status = p_approval_status,
+          approval_note = coalesce(p_note, ''),
+          approved_by = v_actor,
+          approved_at = now(),
+          updated_at = now();
+  end if;
+
+  insert into public.role_audit_log (
+    event_id, actor_id, target_user_id, action,
+    old_event_role, new_event_role, old_platform_role, new_platform_role, note
+  ) values (
+    p_event_id, v_actor, p_target_user_id, p_approval_status,
+    coalesce(v_old_ev_role, ''), v_final_ev, v_target_prof.platform_role, v_final_plat, coalesce(p_note, '')
+  );
+
+  return jsonb_build_object('ok', true, 'event_role', v_final_ev, 'platform_role', v_final_plat, 'approval_status', p_approval_status);
+end;
+$$;
+
 
 -- =============================================================================
 -- STHS EventHub — Clean Production Seed (ZERO fake users, abstracts, or speakers)
