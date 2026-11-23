@@ -1,6 +1,6 @@
 /**
  * STHS EventHub — Launch-Ready User Accounts, Role Requests & Digital QR Pass
- * Supports Email + Password, One-Click Email Sign-In Link, and Sign in with GitHub.
+ * Supports Email + Password and One-Click Email Sign-In Link.
  * Enforces Approval-Gated Roles: Super Admin, Planning Committee, Peer Reviewer,
  * Sponsor Partner, Session Chair, and Check-In Volunteer.
  */
@@ -38,7 +38,42 @@
   }
 
   function getRedirectUrl() {
-    return window.location.origin + window.location.pathname;
+    let path = window.location.pathname.replace(/\/index\.html$/i, "/");
+    if (!path.endsWith("/")) path += "/";
+    return window.location.origin + path;
+  }
+
+  function cleanAuthParamsFromUrl() {
+    try {
+      const url = new URL(window.location.href);
+      const authQueryKeys = ["code", "error", "error_code", "error_description", "type", "token_hash"];
+      let changed = false;
+      authQueryKeys.forEach((k) => {
+        if (url.searchParams.has(k)) {
+          url.searchParams.delete(k);
+          changed = true;
+        }
+      });
+      if (url.hash && /(access_token|refresh_token|error|error_description|type=magiclink|type=recovery|type=signup)=/i.test(url.hash)) {
+        url.hash = "";
+        changed = true;
+      }
+      if (changed) {
+        window.history.replaceState({}, document.title, url.pathname + url.search);
+      }
+    } catch (_) {}
+  }
+
+  function readAuthUrlError() {
+    const query = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams((window.location.hash || "").replace(/^#/, ""));
+    return (
+      hashParams.get("error_description") ||
+      query.get("error_description") ||
+      hashParams.get("error") ||
+      query.get("error") ||
+      ""
+    );
   }
 
   function formatRoleLabel(role) {
@@ -161,12 +196,30 @@
     state.activeEventTitle = options.eventTitle || "STHS EventHub";
     ensureModalsInDom();
 
+    const urlErr = readAuthUrlError();
     const sb = window.STHS_DB?.getClient();
     if (sb) {
-      sb.auth.onAuthStateChange((_event, _session) => {
+      sb.auth.onAuthStateChange((event, _session) => {
+        if (event === "SIGNED_IN") {
+          cleanAuthParamsFromUrl();
+        }
+        if (event === "PASSWORD_RECOVERY") {
+          cleanAuthParamsFromUrl();
+          openPasswordResetModal();
+        }
         refreshUserContext();
       });
       await refreshUserContext();
+      if (state.user) {
+        cleanAuthParamsFromUrl();
+      } else if (urlErr) {
+        cleanAuthParamsFromUrl();
+        openAuthModal("magic");
+        setStatusBanner(
+          "warn",
+          `That sign-in link could not be verified (${urlErr.replace(/\+/g, " ")}). Please request a fresh one-click email link or sign in with your password.`
+        );
+      }
     } else {
       emitChange();
     }
@@ -219,7 +272,7 @@
           <div class="sths-modal-header">
             <div>
               <h3 id="sthsAuthHeading" class="sths-modal-title">STHS EventHub Account</h3>
-              <p class="sths-modal-subtitle" id="sthsAuthSub">Sign in with your university email, one-click email link, or GitHub account.</p>
+              <p class="sths-modal-subtitle" id="sthsAuthSub">Sign in with your academic or work email, or request a one-click email link.</p>
             </div>
             <button type="button" class="sths-modal-close" data-close-sths-modal="sthsAuthModal" aria-label="Close">✕</button>
           </div>
@@ -228,13 +281,6 @@
 
           <!-- Signed Out View -->
           <div id="sthsAuthSignedOutView">
-            <button type="button" class="oauth-btn" id="sthsGitHubSignInBtn">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.57.1.78-.25.78-.55v-2.1c-3.2.7-3.87-1.36-3.87-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.47.11-3.06 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.77.11 3.06.74.81 1.19 1.83 1.19 3.09 0 4.41-2.69 5.39-5.25 5.67.41.36.78 1.06.78 2.14v3.18c0 .31.21.66.79.55A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z"/></svg>
-              <span>Continue with GitHub</span>
-            </button>
-
-            <div class="auth-divider">or use your academic / work email</div>
-
             <div class="auth-tabs" role="tablist">
               <button type="button" class="auth-tab-btn active" data-auth-mode="signin">Sign In</button>
               <button type="button" class="auth-tab-btn" data-auth-mode="signup">Register</button>
@@ -388,6 +434,21 @@
               </div>
             </form>
           </div>
+
+          <!-- Password Recovery View -->
+          <div id="sthsResetPasswordView" style="display:none;">
+            <form id="sthsResetPasswordForm">
+              <div class="sths-form-group">
+                <label class="sths-label" for="authNewPassword">New Password (8+ characters) *</label>
+                <input id="authNewPassword" type="password" class="sths-input" minlength="8" placeholder="Enter new password" autocomplete="new-password" required />
+              </div>
+              <div class="sths-form-group">
+                <label class="sths-label" for="authConfirmPassword">Confirm New Password *</label>
+                <input id="authConfirmPassword" type="password" class="sths-input" minlength="8" placeholder="Re-enter new password" autocomplete="new-password" required />
+              </div>
+              <button type="submit" class="sths-btn sths-btn-primary" style="width:100%;">Update Password &amp; Continue</button>
+            </form>
+          </div>
         </div>
       </div>
 
@@ -444,15 +505,26 @@
       if (hint) hint.style.display = isPrivilegedRole(e.target.value) ? "block" : "none";
     });
 
-    document.getElementById("sthsGitHubSignInBtn")?.addEventListener("click", async () => {
+    document.getElementById("sthsResetPasswordForm")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
       const sb = window.STHS_DB?.getClient();
       if (!sb) return;
-      setStatusBanner("info", "Redirecting to GitHub sign-in…");
-      const { error } = await sb.auth.signInWithOAuth({
-        provider: "github",
-        options: { redirectTo: getRedirectUrl() }
-      });
-      if (error) setStatusBanner("error", error.message);
+      const p1 = document.getElementById("authNewPassword").value;
+      const p2 = document.getElementById("authConfirmPassword").value;
+      if (p1 !== p2) {
+        setStatusBanner("error", "Passwords do not match. Please re-enter.");
+        return;
+      }
+      setStatusBanner("info", "Updating your password…");
+      const { error } = await sb.auth.updateUser({ password: p1 });
+      if (error) {
+        setStatusBanner("error", error.message);
+        return;
+      }
+      document.getElementById("sthsResetPasswordForm").reset();
+      await refreshUserContext();
+      window.STHS_DB.showToast("Password updated! You are now signed in.", "✅");
+      document.getElementById("sthsAuthModal")?.classList.remove("open");
     });
 
     document.getElementById("sthsSignInForm")?.addEventListener("submit", async (e) => {
@@ -637,11 +709,25 @@
     });
   }
 
+  function openPasswordResetModal() {
+    ensureModalsInDom();
+    const modal = document.getElementById("sthsAuthModal");
+    document.getElementById("sthsAuthSignedOutView").style.display = "none";
+    document.getElementById("sthsAuthSignedInView").style.display = "none";
+    document.getElementById("sthsResetPasswordView").style.display = "block";
+    document.getElementById("sthsAuthHeading").textContent = "Set a New Password";
+    document.getElementById("sthsAuthSub").textContent = "Choose a strong password for your STHS EventHub account.";
+    setStatusBanner("info", "Your reset link has been verified. Enter your new password below.");
+    modal.classList.add("open");
+  }
+
   function openAuthModal(defaultTab = "signin") {
     ensureModalsInDom();
     const modal = document.getElementById("sthsAuthModal");
     const signedOutBox = document.getElementById("sthsAuthSignedOutView");
     const signedInBox = document.getElementById("sthsAuthSignedInView");
+    const resetBox = document.getElementById("sthsResetPasswordView");
+    if (resetBox) resetBox.style.display = "none";
     setStatusBanner(null, "");
 
     if (state.user) {
@@ -684,7 +770,7 @@
       signedOutBox.style.display = "block";
       signedInBox.style.display = "none";
       document.getElementById("sthsAuthHeading").textContent = "Sign In or Register";
-      document.getElementById("sthsAuthSub").textContent = `Access ${state.activeEventTitle} with your university email or GitHub.`;
+      document.getElementById("sthsAuthSub").textContent = `Access ${state.activeEventTitle} with your academic or work email.`;
       const targetTab = document.querySelector(`.auth-tab-btn[data-auth-mode="${defaultTab}"]`);
       if (targetTab) targetTab.click();
     }

@@ -592,7 +592,7 @@
         <div class="empty-prod-card" style="grid-column:1/-1;">
           <div style="font-size:2rem;">🎓</div>
           <h4>${state.directory.length === 0 ? "Be the First Verified Speaker or Delegate in the Directory" : "No speakers or delegates match this filter"}</h4>
-          <p>Sign in with your university email or GitHub account to publish your bio, academic affiliation, research interests, and presentation slides.</p>
+          <p>Sign in with your university or work email to publish your bio, academic affiliation, research interests, and presentation slides.</p>
           <button type="button" class="btn btn-accent btn-sm" id="emptyCreateBioBtn">✍️ Create My Speaker / Delegate Bio</button>
         </div>
       `;
@@ -1152,7 +1152,7 @@
         <div class="empty-prod-card">
           <div style="font-size:1.8rem;">🏆</div>
           <h4>Leaderboard Ready for Kick-Off</h4>
-          <p>Register with your university email or GitHub account and solve Amazing Race checkpoints to put your university on top of the 2027 Game-On! Cup!</p>
+          <p>Register with your university or work email and solve Amazing Race checkpoints to put your university on top of the 2027 Game-On! Cup!</p>
         </div>
       `;
       return;
