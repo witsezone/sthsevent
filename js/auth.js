@@ -39,6 +39,14 @@
     return `R ${Number(amount || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
 
+  function buildWitsEftRef(fullName, email) {
+    const cleanName = String(fullName || "").replace(/^(Prof\.|Dr\.|Mr\.|Ms\.|Mrs\.|Mx\.)\s+/i, "").trim();
+    const parts = cleanName.split(/\s+/).filter(Boolean);
+    const rawSurname = parts.length ? parts[parts.length - 1] : String(email || "Delegate").split("@")[0];
+    const safeSurname = rawSurname.replace(/[^a-zA-Z0-9-]/g, "") || "Delegate";
+    return `GBLsymp_${safeSurname}`;
+  }
+
   function paymentBadgeHtml(status) {
     const map = {
       paid: { label: "✓ PAID", bg: "#0f766e", color: "#fff" },
@@ -184,6 +192,7 @@
   function populateSignUpTierOptions(preferredRole = "") {
     const wrap = document.getElementById("authSignUpBillingBlock");
     const sel = document.getElementById("authSignUpTierSelect");
+    const paySel = document.getElementById("authSignUpPaymentMethod");
     if (!wrap || !sel) return;
     const tiers = getSelectableTiers(false);
     if (!state.activeEventId || !tiers.length) {
@@ -193,8 +202,21 @@
     wrap.style.display = "block";
     const prevVal = sel.value;
     sel.innerHTML = tiers
-      .map((t) => `<option value="${t.id}" data-code="${escHtml(t.tier_code)}">${escHtml(t.name)} — ${t.price_zar > 0 ? formatZar(t.price_zar) : "Complimentary (R 0.00)"}</option>`)
+      .map((t) => `<option value="${t.id}" data-code="${escHtml(t.tier_code)}">${escHtml(t.name)} — ${t.price_zar > 0 ? `${formatZar(t.price_zar)} ZAR` : "Complimentary (R 0.00)"}</option>`)
       .join("");
+
+    if (paySel) {
+      const pfOn = Boolean(state.billingSettings?.payfast_enabled);
+      const prevPay = paySel.value;
+      paySel.innerHTML = [
+        pfOn ? `<option value="payfast">PayFast Online (Card / Instant EFT · ZAR)</option>` : "",
+        `<option value="eft">Institutional / Direct Bank EFT (FNB · Upload Proof of Payment)</option>`,
+        `<option value="purchase_order">University Purchase Order (PO) / Internal Transfer (Upload PO)</option>`
+      ].filter(Boolean).join("");
+      if (prevPay && Array.from(paySel.options).some((o) => o.value === prevPay)) {
+        paySel.value = prevPay;
+      }
+    }
 
     const role = preferredRole || document.getElementById("authSignUpRole")?.value || "delegate";
     let match = null;
@@ -393,85 +415,118 @@
 
             <!-- Create Account & Choose Function / Role -->
             <form id="sthsSignUpForm" style="display:none;">
-              <div class="sths-form-row">
-                <div class="sths-form-group">
-                  <label class="sths-label" for="authSignUpTitle">Title</label>
-                  <select id="authSignUpTitle" class="sths-select">
-                    <option value="">None</option>
-                    <option value="Prof.">Prof.</option>
-                    <option value="Dr.">Dr.</option>
-                    <option value="Mr.">Mr.</option>
-                    <option value="Ms.">Ms.</option>
-                    <option value="Mx.">Mx.</option>
-                  </select>
+              <div class="sths-form-section">
+                <div class="sths-form-section-title">1. Personal &amp; Academic Details</div>
+                <div class="sths-form-row-title">
+                  <div class="sths-form-group">
+                    <label class="sths-label" for="authSignUpTitle">Title</label>
+                    <select id="authSignUpTitle" class="sths-select">
+                      <option value="">None</option>
+                      <option value="Prof.">Prof.</option>
+                      <option value="Dr.">Dr.</option>
+                      <option value="Mr.">Mr.</option>
+                      <option value="Ms.">Ms.</option>
+                      <option value="Mrs.">Mrs.</option>
+                      <option value="Mx.">Mx.</option>
+                    </select>
+                  </div>
+                  <div class="sths-form-group">
+                    <label class="sths-label" for="authSignUpName">Full Name (First Name &amp; Surname) *</label>
+                    <input id="authSignUpName" type="text" class="sths-input" placeholder="e.g. Lufuno Nyadzani" required />
+                  </div>
                 </div>
-                <div class="sths-form-group">
-                  <label class="sths-label" for="authSignUpName">Full Name *</label>
-                  <input id="authSignUpName" type="text" class="sths-input" placeholder="Your full name" required />
+                <div class="sths-form-row">
+                  <div class="sths-form-group">
+                    <label class="sths-label" for="authSignUpEmail">Academic / Work Email *</label>
+                    <input id="authSignUpEmail" type="email" class="sths-input" placeholder="name@wits.ac.za" autocomplete="email" required />
+                  </div>
+                  <div class="sths-form-group">
+                    <label class="sths-label" for="authSignUpPassword">Password (8+ chars) *</label>
+                    <input id="authSignUpPassword" type="password" class="sths-input" minlength="8" placeholder="Create password" autocomplete="new-password" required />
+                  </div>
+                </div>
+                <div class="sths-form-row">
+                  <div class="sths-form-group">
+                    <label class="sths-label" for="authSignUpUni">University / Organization *</label>
+                    <input id="authSignUpUni" type="text" class="sths-input" list="saUniversitiesList" placeholder="University of the Witwatersrand (Wits)" required />
+                    <datalist id="saUniversitiesList">
+                      <option value="University of the Witwatersrand (Wits)"></option>
+                      <option value="University of Cape Town (UCT)"></option>
+                      <option value="University of Pretoria (UP)"></option>
+                      <option value="University of Johannesburg (UJ)"></option>
+                      <option value="Stellenbosch University (SU)"></option>
+                      <option value="University of KwaZulu-Natal (UKZN)"></option>
+                      <option value="Rhodes University"></option>
+                      <option value="North-West University (NWU)"></option>
+                      <option value="University of the Western Cape (UWC)"></option>
+                      <option value="University of the Free State (UFS)"></option>
+                      <option value="Sefako Makgatho Health Sciences University (SMU)"></option>
+                    </datalist>
+                  </div>
+                  <div class="sths-form-group">
+                    <label class="sths-label" for="authSignUpDept">School / Department</label>
+                    <input id="authSignUpDept" type="text" class="sths-input" placeholder="e.g. School of Therapeutic Sciences" />
+                  </div>
                 </div>
               </div>
-              <div class="sths-form-row">
+
+              <div class="sths-form-section">
+                <div class="sths-form-section-title">2. Symposium Role &amp; Dietary Requirements</div>
                 <div class="sths-form-group">
-                  <label class="sths-label" for="authSignUpEmail">Academic / Work Email *</label>
-                  <input id="authSignUpEmail" type="email" class="sths-input" placeholder="name@university.ac.za" autocomplete="email" required />
+                  <label class="sths-label" for="authSignUpRole">Role / Function *</label>
+                  <select id="authSignUpRole" class="sths-select">${roleOptionsHtml()}</select>
                 </div>
-                <div class="sths-form-group">
-                  <label class="sths-label" for="authSignUpPassword">Password (8+ chars) *</label>
-                  <input id="authSignUpPassword" type="password" class="sths-input" minlength="8" placeholder="Create password" autocomplete="new-password" required />
+                <div id="authSignUpApprovalHint" class="sths-alert sths-alert-info" style="display:none; font-size:0.8rem; margin-bottom:0.85rem;">
+                  You will receive immediate <strong>Delegate</strong> access upon sign-up while your requested committee/reviewer/partner permissions await administrator approval.
                 </div>
-              </div>
-              <div class="sths-form-row">
-                <div class="sths-form-group">
-                  <label class="sths-label" for="authSignUpUni">University / Organization *</label>
-                  <input id="authSignUpUni" type="text" class="sths-input" list="saUniversitiesList" placeholder="University of the Witwatersrand (Wits)" required />
-                  <datalist id="saUniversitiesList">
-                    <option value="University of the Witwatersrand (Wits)"></option>
-                    <option value="University of Cape Town (UCT)"></option>
-                    <option value="University of Pretoria (UP)"></option>
-                    <option value="University of Johannesburg (UJ)"></option>
-                    <option value="Stellenbosch University (SU)"></option>
-                    <option value="University of KwaZulu-Natal (UKZN)"></option>
-                    <option value="Rhodes University"></option>
-                    <option value="North-West University (NWU)"></option>
-                    <option value="University of the Western Cape (UWC)"></option>
-                    <option value="University of the Free State (UFS)"></option>
-                    <option value="Sefako Makgatho Health Sciences University (SMU)"></option>
-                  </datalist>
-                </div>
-                <div class="sths-form-group">
-                  <label class="sths-label" for="authSignUpDept">School / Department</label>
-                  <input id="authSignUpDept" type="text" class="sths-input" placeholder="e.g. School of Therapeutic Sciences" />
+                <div class="sths-form-row">
+                  <div class="sths-form-group">
+                    <label class="sths-label" for="authSignUpDietary">Dietary Requirements *</label>
+                    <select id="authSignUpDietary" class="sths-select">
+                      <option value="None">None</option>
+                      <option value="Vegetarian">Vegetarian</option>
+                      <option value="Vegan">Vegan</option>
+                      <option value="Halaal">Halaal</option>
+                      <option value="Kosher">Kosher</option>
+                      <option value="Gluten-Free / Allergies">Gluten-Free / Food Allergies</option>
+                    </select>
+                  </div>
+                  <div class="sths-form-group">
+                    <label class="sths-label" for="authSignUpDietaryNotes">Allergies / Accessibility Notes</label>
+                    <input id="authSignUpDietaryNotes" type="text" class="sths-input" placeholder="Optional (e.g. nut allergy, wheelchair access)" />
+                  </div>
                 </div>
               </div>
-              <div class="sths-form-group">
-                <label class="sths-label" for="authSignUpRole">Role / Function *</label>
-                <select id="authSignUpRole" class="sths-select">${roleOptionsHtml()}</select>
-              </div>
-              <div id="authSignUpApprovalHint" class="sths-alert sths-alert-info" style="display:none; font-size:0.8rem;">
-                You will receive immediate <strong>Delegate</strong> access upon sign-up while your requested committee/reviewer/partner permissions await administrator approval.
-              </div>
-              <div id="authSignUpBillingBlock" style="display:none; background:#f8fafc; border:1.5px solid #dbe4ee; border-radius:12px; padding:0.8rem 0.9rem; margin-bottom:0.85rem;">
-                <div style="font-size:0.74rem; font-weight:800; letter-spacing:0.06em; text-transform:uppercase; color:#003b5c; margin-bottom:0.5rem;">Symposium Registration Fee &amp; Invoice</div>
-                <div class="sths-form-group" style="margin-bottom:0.65rem;">
-                  <label class="sths-label" for="authSignUpTierSelect">Registration Pass / Fee Tier *</label>
+
+              <div id="authSignUpBillingBlock" class="sths-form-section" style="display:none; background:#f0fdfa; border-color:#99f6e4;">
+                <div class="sths-form-section-title">3. Registration Fee (ZAR) &amp; Invoice</div>
+                <div class="sths-form-group">
+                  <label class="sths-label" for="authSignUpTierSelect">Registration Pass / Fee Tier (ZAR) *</label>
                   <select id="authSignUpTierSelect" class="sths-select"></select>
                 </div>
                 <div class="sths-form-row">
-                  <div class="sths-form-group" style="margin-bottom:0;">
-                    <label class="sths-label" for="authSignUpPaymentMethod">Payment Option *</label>
-                    <select id="authSignUpPaymentMethod" class="sths-select">
-                      <option value="payfast">PayFast Online (Card / Instant EFT)</option>
-                      <option value="eft">Institutional Bank EFT (Pro-Forma Invoice)</option>
-                      <option value="purchase_order">University Purchase Order (PO)</option>
+                  <div class="sths-form-group">
+                    <label class="sths-label" for="authSignUpNeedInvoice">Do you need an invoice to provide payment? *</label>
+                    <select id="authSignUpNeedInvoice" class="sths-select">
+                      <option value="yes">Yes — generate a Pro-Forma Tax Invoice</option>
+                      <option value="no">No — I will pay directly via Wits FNB EFT</option>
                     </select>
                   </div>
-                  <div class="sths-form-group" style="margin-bottom:0;">
-                    <label class="sths-label" for="authSignUpPoRef">PO / VAT No. (Optional)</label>
-                    <input id="authSignUpPoRef" type="text" class="sths-input" placeholder="e.g. PO-2027-014" />
+                  <div class="sths-form-group">
+                    <label class="sths-label" for="authSignUpPaymentMethod">Payment Method *</label>
+                    <select id="authSignUpPaymentMethod" class="sths-select">
+                      <option value="eft">Institutional / Direct Bank EFT (FNB · Upload PoP)</option>
+                      <option value="purchase_order">University Purchase Order (PO) / Internal Transfer</option>
+                    </select>
                   </div>
                 </div>
+                <div class="sths-form-group">
+                  <label class="sths-label" for="authSignUpPoRef">Institution PO / VAT Number (Optional)</label>
+                  <input id="authSignUpPoRef" type="text" class="sths-input" placeholder="e.g. PO-2027-014 (appears on your invoice)" />
+                </div>
               </div>
-              <button type="submit" class="sths-btn sths-btn-primary" style="width:100%;">Create Account &amp; Generate Invoice</button>
+
+              <button type="submit" class="sths-btn sths-btn-primary" style="width:100%; padding:0.82rem 1.2rem; font-size:0.95rem;">Create Account &amp; Complete Registration</button>
             </form>
 
             <!-- Forgot Password Form (toggled cleanly from Sign In) -->
@@ -627,10 +682,12 @@
     document.querySelectorAll(".auth-tab-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
         const mode = btn.dataset.authMode;
+        const modalCard = document.querySelector("#sthsAuthModal .sths-modal");
         document.querySelectorAll(".auth-tab-btn").forEach((b) => b.classList.toggle("active", b === btn));
         document.getElementById("sthsSignInForm").style.display = mode === "signin" ? "block" : "none";
         document.getElementById("sthsSignUpForm").style.display = mode === "signup" ? "block" : "none";
         document.getElementById("sthsForgotPasswordForm").style.display = "none";
+        if (modalCard) modalCard.classList.toggle("is-spacious", mode === "signup");
         if (mode === "signup") populateSignUpTierOptions();
         setStatusBanner(null, "");
       });
@@ -706,16 +763,30 @@
         submitBtn.disabled = true;
         submitBtn.textContent = "Sending reset link…";
       }
-      setStatusBanner("info", "Sending password reset instructions…");
-      const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: getRedirectUrl() });
-      if (error) {
-        setStatusBanner("error", formatAuthError(error));
+      setStatusBanner("info", "Sending password reset instructions from efundanathi@wits.ac.za…");
+      let finalError = null;
+      try {
+        const { data: fnData, error: fnErr } = await sb.functions.invoke("sths-password-reset", {
+          body: { email, redirect_to: getRedirectUrl() }
+        });
+        if (fnErr || fnData?.configured === false) {
+          const { error: fbErr } = await sb.auth.resetPasswordForEmail(email, { redirectTo: getRedirectUrl() });
+          if (fbErr) finalError = fbErr;
+        } else if (fnData && !fnData.ok) {
+          finalError = new Error(fnData.error || "Could not send password reset email.");
+        }
+      } catch (ex) {
+        const { error: fbErr } = await sb.auth.resetPasswordForEmail(email, { redirectTo: getRedirectUrl() });
+        if (fbErr) finalError = fbErr;
+      }
+      if (finalError) {
+        setStatusBanner("error", formatAuthError(finalError));
         if (submitBtn) {
           submitBtn.disabled = false;
           submitBtn.textContent = "Send Password Reset Link";
         }
       } else {
-        setStatusBanner("success", `Password reset instructions sent to <strong>${email}</strong>. Please check your inbox (and Spam/Junk folder).`);
+        setStatusBanner("success", `Password reset instructions sent to <strong>${escHtml(email)}</strong>. Please check your inbox (and Spam/Junk folder).`);
         if (submitBtn) {
           let secs = 60;
           submitBtn.textContent = `Sent — resend in ${secs}s`;
@@ -782,6 +853,9 @@
           const selectedTierObj = state.ticketTiers.find((t) => t.id === selectedTierId);
           const payMethod = document.getElementById("authSignUpPaymentMethod")?.value || "eft";
           const poRef = document.getElementById("authSignUpPoRef")?.value.trim() || "";
+          const dietSel = document.getElementById("authSignUpDietary")?.value || "None";
+          const dietNotes = document.getElementById("authSignUpDietaryNotes")?.value.trim() || "";
+          const dietaryCombined = dietNotes ? `${dietSel} — ${dietNotes}` : dietSel;
 
           await sb.from("event_registrations").upsert({
             event_id: state.activeEventId,
@@ -789,6 +863,7 @@
             role: isPrivilegedRole(chosenRole) ? "delegate" : chosenRole,
             requested_role: isPrivilegedRole(chosenRole) ? chosenRole : "",
             attendance_mode: selectedTierObj?.attendance_mode || "in_person",
+            dietary_accessibility: dietaryCombined,
             public_in_directory: true
           }, { onConflict: "event_id,user_id" });
 
@@ -934,6 +1009,8 @@
     setStatusBanner(null, "");
 
     if (state.user) {
+      const modalCard = document.querySelector("#sthsAuthModal .sths-modal");
+      if (modalCard) modalCard.classList.add("is-spacious");
       signedOutBox.style.display = "none";
       signedInBox.style.display = "block";
       document.getElementById("sthsAuthHeading").textContent = "My Account & Event Registration";
@@ -1097,6 +1174,8 @@
     const issuedStr = inv.issued_at ? new Date(inv.issued_at).toLocaleDateString("en-ZA", { year: "numeric", month: "long", day: "numeric" }) : new Date().toLocaleDateString("en-ZA");
     const paidStr = inv.paid_at ? new Date(inv.paid_at).toLocaleDateString("en-ZA", { year: "numeric", month: "long", day: "numeric" }) : "";
 
+    const eftRef = buildWitsEftRef(inv.billing_name || state.profile?.full_name || "", inv.billing_email || state.user?.email || "");
+
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1210,10 +1289,12 @@
     ${
       !isPaid
         ? `<div class="bank">
-            <h4>Institutional EFT / Bank Transfer Details (South Africa)</h4>
-            Bank: <strong>${escHtml(b.bank_name || "First National Bank (FNB)")}</strong> · Account Holder: <strong>${escHtml(b.account_holder || "University of the Witwatersrand")}</strong><br/>
-            Account Number: <strong>${escHtml(b.account_number || "")}</strong> · Branch Code: <strong>${escHtml(b.branch_code || "250655")}</strong> · SWIFT: <strong>${escHtml(b.swift_code || "FIRNZAJJ")}</strong><br/>
-            Cost Centre / Event Code: <strong>${escHtml(b.cost_centre_reference || "GO2027-STHS")}</strong> · <strong>Mandatory Payment Reference: ${escHtml(inv.invoice_number)}</strong><br/>
+            <h4>Official Wits Banking Details — EFT / Bank Transfer (ZAR · South Africa)</h4>
+            <strong>Bank:</strong> ${escHtml(b.bank_name || "FNB Bank (First National Bank)")}<br/>
+            <strong>Account Holder:</strong> ${escHtml(b.account_holder || "UNIVERSITY OF THE WITWATERSRAND")}<br/>
+            <strong>Account Type:</strong> PUBLIC SECTOR MANAGED ACCOUNT<br/>
+            <strong>Account Number:</strong> <span style="font-family:monospace;font-weight:800;">${escHtml(b.account_number || "62150130426")}</span> · <strong>Branch Code:</strong> ${escHtml(b.branch_code || "251905")} · <strong>SWIFT Code:</strong> ${escHtml(b.swift_code || "FIRNZAJJ")}<br/>
+            <strong style="color:#b91c1c;">Mandatory EFT Payment Reference:</strong> <span style="font-family:monospace;font-weight:900;font-size:14px;color:#003b5c;">${escHtml(eftRef)}</span> <span style="color:#64748b;">(Invoice Ref: ${escHtml(inv.invoice_number)})</span><br/>
             <span style="font-size:11.5px;color:#334155;">${escHtml(b.invoice_terms || "")}</span>
           </div>`
         : `<div class="bank" style="background:#ecfdf5;border-color:#6ee7b7;">
@@ -1280,6 +1361,8 @@
     const b = state.billingSettings || {};
     const isPaid = inv && ["paid", "complimentary"].includes(inv.payment_status);
     const selectableTiers = getSelectableTiers(isOrganizer() || isReviewer());
+    const eftRef = buildWitsEftRef(inv?.billing_name || state.profile?.full_name || "", inv?.billing_email || state.user?.email || "");
+    const payfastActive = Boolean(b.payfast_enabled);
 
     if (!inv) {
       body.innerHTML = `<div class="sths-alert sths-alert-info">Registration billing tiers are being finalized by the Organizing Committee. Please check back shortly.</div>`;
@@ -1298,7 +1381,7 @@
         </div>
         <div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:0.5rem; border-top:1px solid #e2e8f0; padding-top:0.55rem;">
           <div style="font-size:0.86rem; font-weight:700; color:#1e293b;">${escHtml(inv.tier_name)}</div>
-          <div style="font-size:1.25rem; font-weight:900; color:#003b5c;">${formatZar(inv.amount_zar)}</div>
+          <div style="font-size:1.25rem; font-weight:900; color:#003b5c;">${formatZar(inv.amount_zar)} <span style="font-size:0.75rem;font-weight:700;color:#64748b;">ZAR</span></div>
         </div>
         ${inv.payment_reference ? `<div style="font-size:0.78rem; color:#0f766e; margin-top:0.35rem;">Payment Reference: <code>${escHtml(inv.payment_reference)}</code></div>` : ""}
       </div>
@@ -1310,10 +1393,10 @@
           <summary style="cursor:pointer; font-size:0.82rem; font-weight:700; color:#003b5c;">✏️ Change Registration Tier or PO / VAT Reference</summary>
           <form id="sthsUpdateInvoiceTierForm" style="margin-top:0.7rem; display:flex; flex-direction:column; gap:0.6rem;">
             <div>
-              <label class="sths-label" for="invSwitchTierSel">Registration Pass</label>
+              <label class="sths-label" for="invSwitchTierSel">Registration Pass (ZAR)</label>
               <select id="invSwitchTierSel" class="sths-select">
                 ${selectableTiers
-                  .map((t) => `<option value="${t.id}" ${t.id === inv.tier_id ? "selected" : ""}>${escHtml(t.name)} — ${t.price_zar > 0 ? formatZar(t.price_zar) : "Complimentary"}</option>`)
+                  .map((t) => `<option value="${t.id}" ${t.id === inv.tier_id ? "selected" : ""}>${escHtml(t.name)} — ${t.price_zar > 0 ? `${formatZar(t.price_zar)} ZAR` : "Complimentary"}</option>`)
                   .join("")}
               </select>
             </div>
@@ -1331,29 +1414,36 @@
           </form>
         </details>
 
-        <!-- Option 1: PayFast Online Checkout -->
+        ${
+          payfastActive
+            ? `
+        <!-- Online Payment (PayFast) — shown only when enabled by Admin -->
         <div style="background:#f0fdfa; border:1.5px solid #99f6e4; border-radius:12px; padding:0.9rem 1rem; margin-bottom:0.85rem;">
-          <div style="font-weight:800; color:#003b5c; font-size:0.9rem; margin-bottom:0.3rem;">💳 Option 1 · Instant Online Payment (PayFast)</div>
-          <p style="font-size:0.8rem; color:#334155; margin:0 0 0.65rem;">Pay securely with Visa, Mastercard, Instant EFT, Apple Pay, or Samsung Pay. Your official PAID Tax Invoice is issued automatically.</p>
-          <button type="button" class="sths-btn sths-btn-primary" id="sthsPayFastBtn" style="width:100%;">Pay ${formatZar(inv.amount_zar)} Online with PayFast →</button>
+          <div style="font-weight:800; color:#003b5c; font-size:0.9rem; margin-bottom:0.3rem;">💳 Instant Online Payment (PayFast · ZAR)</div>
+          <p style="font-size:0.8rem; color:#334155; margin:0 0 0.65rem;">Pay securely with Visa, Mastercard, Instant EFT, or Apple Pay. Your official PAID Tax Invoice is issued automatically.</p>
+          <button type="button" class="sths-btn sths-btn-primary" id="sthsPayFastBtn" style="width:100%;">Pay ${formatZar(inv.amount_zar)} ZAR Online with PayFast →</button>
           <div id="sthsPayFastStatus" style="margin-top:0.5rem;"></div>
-        </div>
+        </div>`
+            : ""
+        }
 
-        <!-- Option 2: Institutional EFT / Purchase Order -->
-        <div style="background:#fffbeb; border:1.5px solid #fde68a; border-radius:12px; padding:0.9rem 1rem; margin-bottom:0.95rem;">
-          <div style="font-weight:800; color:#78350f; font-size:0.9rem; margin-bottom:0.35rem;">🏦 Option 2 · Institutional Bank EFT / University Purchase Order</div>
-          <div style="font-size:0.79rem; color:#451a03; line-height:1.55; margin-bottom:0.65rem;">
-            <strong>Bank:</strong> ${escHtml(b.bank_name || "First National Bank (FNB)")}<br/>
-            <strong>Account Holder:</strong> ${escHtml(b.account_holder || "University of the Witwatersrand")}<br/>
-            <strong>Account Number:</strong> ${escHtml(b.account_number || "")} · <strong>Branch:</strong> ${escHtml(b.branch_code || "250655")}<br/>
-            <strong>Mandatory Reference:</strong> <code style="font-weight:800; color:#003b5c;">${escHtml(inv.invoice_number)}</code>
+        <!-- Official Wits FNB Bank EFT & University Purchase Order Upload -->
+        <div style="background:#fffbeb; border:1.5px solid #fde68a; border-radius:12px; padding:0.95rem 1.05rem; margin-bottom:0.95rem;">
+          <div style="font-weight:800; color:#78350f; font-size:0.92rem; margin-bottom:0.45rem;">🏦 Official Wits FNB Bank EFT &amp; University Purchase Order</div>
+          <div style="background:#fff; border:1px solid #f3e4bc; border-radius:10px; padding:0.75rem 0.85rem; font-size:0.81rem; color:#1e293b; line-height:1.65; margin-bottom:0.75rem;">
+            <strong>Bank:</strong> ${escHtml(b.bank_name || "FNB Bank (First National Bank)")}<br/>
+            <strong>Account Name:</strong> ${escHtml(b.account_holder || "UNIVERSITY OF THE WITWATERSRAND")}<br/>
+            <strong>Account Type:</strong> PUBLIC SECTOR MANAGED ACCOUNT<br/>
+            <strong>Account Number:</strong> <code style="font-weight:800; color:#003b5c;">${escHtml(b.account_number || "62150130426")}</code><br/>
+            <strong>Branch Code:</strong> ${escHtml(b.branch_code || "251905")} &nbsp;·&nbsp; <strong>SWIFT Code:</strong> ${escHtml(b.swift_code || "FIRNZAJJ")}<br/>
+            <span style="color:#b91c1c; font-weight:800;">Mandatory Reference:</span> <code style="font-weight:900; font-size:0.92rem; color:#003b5c; background:#e0f2fe; padding:0.12rem 0.45rem; border-radius:6px;">${escHtml(eftRef)}</code>
           </div>
           <form id="sthsUploadPopForm" style="display:flex; flex-direction:column; gap:0.55rem;">
-            <label class="sths-label" for="sthsPopFileInput" style="margin-bottom:0;">Upload Proof of Payment (PoP) or University Purchase Order (PDF / PNG / JPG)</label>
+            <label class="sths-label" for="sthsPopFileInput" style="margin-bottom:0;">Upload Proof of Payment (EFT) or University Purchase Order (PDF / PNG / JPG)</label>
             <input id="sthsPopFileInput" type="file" class="sths-input" accept=".pdf,.png,.jpg,.jpeg,.webp" required />
-            <button type="submit" class="sths-btn sths-btn-outline sths-btn-sm" id="sthsUploadPopBtn">📤 Submit Proof of Payment for Finance Verification</button>
+            <button type="submit" class="sths-btn sths-btn-primary sths-btn-sm" id="sthsUploadPopBtn">📤 Upload Proof of Payment / Purchase Order</button>
           </form>
-          ${inv.pop_file_name ? `<div style="font-size:0.78rem; color:#1d4ed8; font-weight:700; margin-top:0.45rem;">✓ Submitted: ${escHtml(inv.pop_file_name)} (awaiting Wits Finance verification)</div>` : ""}
+          ${inv.pop_file_name ? `<div style="font-size:0.79rem; color:#1d4ed8; font-weight:700; margin-top:0.5rem;">✓ Submitted: ${escHtml(inv.pop_file_name)} (awaiting Wits Finance verification)</div>` : ""}
         </div>
       `
           : `
@@ -1520,6 +1610,7 @@
     printInvoiceDocument,
     downloadSymposiumIcs,
     formatZar,
+    buildWitsEftRef,
     paymentBadgeHtml,
     requireAuth,
     initialsFrom,
