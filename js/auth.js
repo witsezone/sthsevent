@@ -254,9 +254,6 @@
         <option value="planning_committee">Planning &amp; Organizing Committee (Approval Required)</option>
         <option value="reviewer">Scientific Peer Reviewer (Approval Required)</option>
         <option value="sponsor">Sponsor / Exhibitor Partner (Approval Required)</option>
-        <option value="session_chair">Session Chair / Stage Moderator (Approval Required)</option>
-        <option value="volunteer">On-Ground Check-In &amp; eZone Volunteer (Approval Required)</option>
-        <option value="super_admin">Super Admin Access Request (Approval Required)</option>
       </optgroup>
     `;
   }
@@ -780,7 +777,17 @@
 
       if (state.activeEventId) {
         document.getElementById("regAttendanceMode").value = r.attendance_mode || "in_person";
-        document.getElementById("regRoleSelect").value = r.requested_role || r.role || "delegate";
+        const roleSel = document.getElementById("regRoleSelect");
+        roleSel.querySelectorAll('option[data-assigned-role="true"]').forEach((opt) => opt.remove());
+        const targetRole = isSuperAdmin() ? "super_admin" : (r.requested_role || r.role || "delegate");
+        if (!Array.from(roleSel.options).some((opt) => opt.value === targetRole)) {
+          const dynOpt = document.createElement("option");
+          dynOpt.value = targetRole;
+          dynOpt.dataset.assignedRole = "true";
+          dynOpt.textContent = `${formatRoleLabel(targetRole)} (Assigned)`;
+          roleSel.appendChild(dynOpt);
+        }
+        roleSel.value = targetRole;
         document.getElementById("regDietary").value = r.dietary_accessibility || "";
         document.getElementById("regPublicDir").checked = r.public_in_directory !== false;
       }
