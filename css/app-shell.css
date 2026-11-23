@@ -351,7 +351,9 @@
   gap: 0.35rem;
   margin-bottom: 0.9rem;
 }
-.sths-form-section .sths-form-group:last-child {
+.sths-form-section > .sths-form-group:last-child,
+.sths-form-section > .sths-form-row:last-child .sths-form-group,
+.sths-form-section > .sths-form-row-title:last-child .sths-form-group {
   margin-bottom: 0;
 }
 .sths-form-row {
