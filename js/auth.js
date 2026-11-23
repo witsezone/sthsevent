@@ -1,8 +1,6 @@
 /**
  * STHS EventHub — Launch-Ready User Accounts, Role Requests & Digital QR Pass
- * Supports Email + Password and One-Click Email Sign-In Link.
- * Enforces Approval-Gated Roles: Super Admin, Planning Committee, Peer Reviewer,
- * Sponsor Partner, Session Chair, and Check-In Volunteer.
+ * Supports Email + Password authentication, Password Recovery, and Approval-Gated Roles.
  */
 (function () {
   const ROLE_META = {
@@ -214,10 +212,10 @@
         cleanAuthParamsFromUrl();
       } else if (urlErr) {
         cleanAuthParamsFromUrl();
-        openAuthModal("magic");
+        openAuthModal("signin");
         setStatusBanner(
           "warn",
-          `That sign-in link could not be verified (${urlErr.replace(/\+/g, " ")}). Please request a fresh one-click email link or sign in with your password.`
+          `That verification or reset link could not be completed (${urlErr.replace(/\+/g, " ")}). Please sign in with your password or request a fresh password reset.`
         );
       }
     } else {
@@ -269,7 +267,7 @@
           <div class="sths-modal-header">
             <div>
               <h3 id="sthsAuthHeading" class="sths-modal-title">STHS EventHub Account</h3>
-              <p class="sths-modal-subtitle" id="sthsAuthSub">Sign in with your academic or work email, or request a one-click email link.</p>
+              <p class="sths-modal-subtitle" id="sthsAuthSub">Sign in or register with your academic or work email and password.</p>
             </div>
             <button type="button" class="sths-modal-close" data-close-sths-modal="sthsAuthModal" aria-label="Close">✕</button>
           </div>
@@ -281,7 +279,6 @@
             <div class="auth-tabs" role="tablist">
               <button type="button" class="auth-tab-btn active" data-auth-mode="signin">Sign In</button>
               <button type="button" class="auth-tab-btn" data-auth-mode="signup">Register</button>
-              <button type="button" class="auth-tab-btn" data-auth-mode="magic">Email Link</button>
             </div>
 
             <!-- Email + Password Sign In -->
@@ -362,16 +359,19 @@
               <button type="submit" class="sths-btn sths-btn-primary" style="width:100%;">Create Account &amp; Register</button>
             </form>
 
-            <!-- Magic Link -->
-            <form id="sthsMagicLinkForm" style="display:none;">
-              <p style="font-size:0.84rem; color:var(--text-secondary); margin:0 0 0.8rem;">
-                Enter your email address and we will send you a secure one-click sign-in link — no password required.
+            <!-- Forgot Password Form (toggled cleanly from Sign In) -->
+            <form id="sthsForgotPasswordForm" style="display:none;">
+              <p style="font-size:0.84rem; color:var(--text-secondary); margin:0 0 0.85rem;">
+                Enter the email address you registered with and we will send you a secure password reset link from <strong>eFundanathi eZone</strong>.
               </p>
               <div class="sths-form-group">
-                <label class="sths-label" for="authMagicEmail">Email Address</label>
-                <input id="authMagicEmail" type="email" class="sths-input" placeholder="name@wits.ac.za" required />
+                <label class="sths-label" for="authForgotEmail">Registered Email Address</label>
+                <input id="authForgotEmail" type="email" class="sths-input" placeholder="name@wits.ac.za" autocomplete="email" required />
               </div>
-              <button type="submit" class="sths-btn sths-btn-primary" style="width:100%;">Send One-Click Sign-In Link</button>
+              <button type="submit" class="sths-btn sths-btn-primary" style="width:100%;">Send Password Reset Link</button>
+              <div style="text-align:center; margin-top:0.75rem;">
+                <button type="button" id="sthsBackToSignInBtn" style="background:none;border:none;color:var(--sths-teal);font-weight:700;font-size:0.82rem;cursor:pointer;">← Back to Sign In</button>
+              </div>
             </form>
           </div>
 
@@ -470,7 +470,7 @@
   function formatAuthError(err) {
     const msg = String(err?.message || err || "Unable to complete sign-in.");
     if (/rate limit/i.test(msg) || err?.status === 429) {
-      return "Too many sign-in emails were requested recently. Please wait a few minutes before requesting another link, or sign in with your email and password.";
+      return "Our email delivery quota is temporarily busy. Please wait a few minutes and try again, or contact help.efundanathi@wits.ac.za if you need immediate assistance.";
     }
     return msg;
   }
@@ -500,7 +500,7 @@
         document.querySelectorAll(".auth-tab-btn").forEach((b) => b.classList.toggle("active", b === btn));
         document.getElementById("sthsSignInForm").style.display = mode === "signin" ? "block" : "none";
         document.getElementById("sthsSignUpForm").style.display = mode === "signup" ? "block" : "none";
-        document.getElementById("sthsMagicLinkForm").style.display = mode === "magic" ? "block" : "none";
+        document.getElementById("sthsForgotPasswordForm").style.display = "none";
         setStatusBanner(null, "");
       });
     });
@@ -549,16 +549,56 @@
       }
     });
 
-    document.getElementById("sthsForgotPasswordBtn")?.addEventListener("click", async () => {
+    document.getElementById("sthsForgotPasswordBtn")?.addEventListener("click", () => {
+      const prefill = document.getElementById("authSignInEmail")?.value.trim() || "";
+      document.getElementById("sthsSignInForm").style.display = "none";
+      document.getElementById("sthsSignUpForm").style.display = "none";
+      document.getElementById("sthsForgotPasswordForm").style.display = "block";
+      if (prefill) document.getElementById("authForgotEmail").value = prefill;
+      setStatusBanner(null, "");
+    });
+
+    document.getElementById("sthsBackToSignInBtn")?.addEventListener("click", () => {
+      document.getElementById("sthsForgotPasswordForm").style.display = "none";
+      document.getElementById("sthsSignInForm").style.display = "block";
+      setStatusBanner(null, "");
+    });
+
+    document.getElementById("sthsForgotPasswordForm")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
       const sb = window.STHS_DB?.getClient();
-      const email = document.getElementById("authSignInEmail").value.trim();
-      if (!email) {
-        setStatusBanner("warn", "Enter your email address above first, then click Forgot Password.");
-        return;
+      if (!sb) return;
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      const email = document.getElementById("authForgotEmail").value.trim();
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Sending reset link…";
       }
+      setStatusBanner("info", "Sending password reset instructions…");
       const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: getRedirectUrl() });
-      if (error) setStatusBanner("error", formatAuthError(error));
-      else setStatusBanner("success", `Password reset instructions sent to <strong>${email}</strong>.`);
+      if (error) {
+        setStatusBanner("error", formatAuthError(error));
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Send Password Reset Link";
+        }
+      } else {
+        setStatusBanner("success", `Password reset instructions sent to <strong>${email}</strong>. Please check your inbox (and Spam/Junk folder).`);
+        if (submitBtn) {
+          let secs = 60;
+          submitBtn.textContent = `Sent — resend in ${secs}s`;
+          const timer = setInterval(() => {
+            secs -= 1;
+            if (secs <= 0) {
+              clearInterval(timer);
+              submitBtn.disabled = false;
+              submitBtn.textContent = "Send Password Reset Link";
+            } else {
+              submitBtn.textContent = `Sent — resend in ${secs}s`;
+            }
+          }, 1000);
+        }
+      }
     });
 
     document.getElementById("sthsSignUpForm")?.addEventListener("submit", async (e) => {
@@ -628,46 +668,6 @@
           "success",
           `Confirmation email sent to <strong>${email}</strong>. Click the verification link in your inbox to activate your account.`
         );
-      }
-    });
-
-    document.getElementById("sthsMagicLinkForm")?.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const sb = window.STHS_DB?.getClient();
-      if (!sb) return;
-      const submitBtn = e.target.querySelector('button[type="submit"]');
-      const email = document.getElementById("authMagicEmail").value.trim();
-      if (submitBtn) {
-        submitBtn.disabled = true;
-        submitBtn.textContent = "Sending link…";
-      }
-      setStatusBanner("info", "Sending your secure sign-in link…");
-      const { error } = await sb.auth.signInWithOtp({
-        email,
-        options: { emailRedirectTo: getRedirectUrl() }
-      });
-      if (error) {
-        setStatusBanner("error", formatAuthError(error));
-        if (submitBtn) {
-          submitBtn.disabled = false;
-          submitBtn.textContent = "Send One-Click Sign-In Link";
-        }
-      } else {
-        setStatusBanner("success", `Check <strong>${email}</strong> for your one-click sign-in link (please check Spam/Junk if it does not arrive within 1 minute).`);
-        if (submitBtn) {
-          let secs = 60;
-          submitBtn.textContent = `Link sent — resend in ${secs}s`;
-          const timer = setInterval(() => {
-            secs -= 1;
-            if (secs <= 0) {
-              clearInterval(timer);
-              submitBtn.disabled = false;
-              submitBtn.textContent = "Send One-Click Sign-In Link";
-            } else {
-              submitBtn.textContent = `Link sent — resend in ${secs}s`;
-            }
-          }, 1000);
-        }
       }
     });
 
