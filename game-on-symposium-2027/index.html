@@ -127,8 +127,9 @@
 
             <div class="hero-cta-row">
               <button type="button" class="btn btn-primary" id="heroRegisterBtn">🎟️ Register / Sign In</button>
+              <button type="button" class="btn btn-mustard" id="heroInvoiceBtn">🧾 Fees, Pay &amp; Invoice</button>
               <button type="button" class="btn btn-accent" data-goto-tab="abstracts">📤 Submit Abstract</button>
-              <button type="button" class="btn btn-mustard" data-goto-tab="sponsors">📖 Sponsorship Prospectus</button>
+              <button type="button" class="btn btn-outline" data-goto-tab="sponsors">📖 Sponsorship Prospectus</button>
               <button type="button" class="btn btn-outline" data-goto-tab="stream">📡 Hybrid Live Stage</button>
               <button type="button" class="btn btn-outline" data-goto-tab="gamification">🏁 Amazing Race</button>
             </div>
@@ -894,7 +895,8 @@
           <p class="section-subtitle" id="adminRoleSubtitle">Approve committee members, reviewers, sponsors &amp; administrators, manage live Zoom/MS Teams stages, and check in delegates.</p>
         </div>
         <div style="display:flex; gap:0.6rem; flex-wrap:wrap;" id="adminExportCluster">
-          <button type="button" class="btn btn-mustard btn-sm" id="exportRegsCsvBtn">📥 Export Registrations CSV</button>
+          <button type="button" class="btn btn-mustard btn-sm" id="exportInvoicesCsvBtn">📥 Export Finance CSV</button>
+          <button type="button" class="btn btn-outline btn-sm" id="exportRegsCsvBtn">📥 Export Registrations CSV</button>
           <button type="button" class="btn btn-primary btn-sm" id="exportAbsCsvBtn">📥 Export Abstracts CSV</button>
         </div>
       </div>
@@ -949,6 +951,82 @@
           <summary style="cursor:pointer; font-weight:800; font-size:0.84rem; color:var(--ink-espresso);">📋 View Recent Access &amp; Role Change Audit Log</summary>
           <div id="adminAuditLogList" style="display:flex; flex-direction:column; gap:0.45rem; margin-top:0.75rem; max-height:220px; overflow-y:auto;"></div>
         </details>
+      </div>
+
+      <!-- Finance, Ticket Fees, PayFast & Invoice Verification (Planning Committee & Super Admin) -->
+      <div class="card" id="adminFinanceCard" style="margin-bottom:1.5rem;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:0.85rem; margin-bottom:1rem;">
+          <div>
+            <span class="badge badge-mustard">FINANCE · PAYFAST &amp; INSTITUTIONAL EFT</span>
+            <h3 style="font-family:var(--font-display); font-size:1.35rem; margin:0.3rem 0 0.2rem;">💳 Registration Fees, Invoices &amp; Payment Verification</h3>
+            <p style="font-size:0.83rem; color:var(--ink-muted); margin:0;">
+              Edit ZAR ticket prices anytime, configure Wits EFT banking details &amp; PayFast status, verify uploaded Proofs of Payment, and email official PAID Tax Invoices from <code>efundanathi@wits.ac.za</code>.
+            </p>
+          </div>
+          <select id="adminInvoiceStatusFilter" class="select-field" style="font-size:0.82rem;">
+            <option value="ALL">All Invoices</option>
+            <option value="pop_submitted">⏳ Proof of Payment Submitted</option>
+            <option value="pro_forma">Pro-Forma (Awaiting Payment)</option>
+            <option value="paid">✓ Paid</option>
+            <option value="complimentary">Complimentary</option>
+          </select>
+        </div>
+
+        <div class="grid-4" id="adminFinanceSummaryGrid" style="margin-bottom:1rem;"></div>
+
+        <div id="adminInvoicesListContainer" style="display:flex; flex-direction:column; gap:0.65rem; max-height:420px; overflow-y:auto; margin-bottom:1rem;"></div>
+
+        <div class="grid-2" style="gap:1rem;">
+          <details open style="background:var(--bg-cream); border:1.5px solid #dfd3be; border-radius:12px; padding:0.85rem;">
+            <summary style="cursor:pointer; font-weight:800; font-size:0.86rem; color:var(--ink-espresso);">🎟️ Edit Symposium Ticket Fees (ZAR)</summary>
+            <div id="adminTicketTiersEditor" style="display:flex; flex-direction:column; gap:0.6rem; margin-top:0.75rem;"></div>
+          </details>
+
+          <details style="background:var(--bg-cream); border:1.5px solid #dfd3be; border-radius:12px; padding:0.85rem;">
+            <summary style="cursor:pointer; font-weight:800; font-size:0.86rem; color:var(--ink-espresso);">🏦 Wits EFT Bank Details &amp; PayFast Gateway Settings</summary>
+            <form id="adminBillingSettingsForm" style="display:flex; flex-direction:column; gap:0.55rem; margin-top:0.75rem;">
+              <div class="grid-2" style="gap:0.5rem;">
+                <div>
+                  <label style="font-size:0.76rem; font-weight:700;">Bank Name</label>
+                  <input id="admBillBankName" type="text" class="input-field" style="width:100%;" />
+                </div>
+                <div>
+                  <label style="font-size:0.76rem; font-weight:700;">Account Holder</label>
+                  <input id="admBillAccountHolder" type="text" class="input-field" style="width:100%;" />
+                </div>
+              </div>
+              <div class="grid-2" style="gap:0.5rem;">
+                <div>
+                  <label style="font-size:0.76rem; font-weight:700;">Wits Bank Account Number</label>
+                  <input id="admBillAccountNumber" type="text" class="input-field" style="width:100%;" />
+                </div>
+                <div>
+                  <label style="font-size:0.76rem; font-weight:700;">Branch Code / SWIFT</label>
+                  <input id="admBillBranchCode" type="text" class="input-field" style="width:100%;" />
+                </div>
+              </div>
+              <div class="grid-2" style="gap:0.5rem;">
+                <div>
+                  <label style="font-size:0.76rem; font-weight:700;">Cost Centre Reference</label>
+                  <input id="admBillCostCentre" type="text" class="input-field" style="width:100%;" />
+                </div>
+                <div>
+                  <label style="font-size:0.76rem; font-weight:700;">Finance Contact Email</label>
+                  <input id="admBillFinanceEmail" type="email" class="input-field" style="width:100%;" />
+                </div>
+              </div>
+              <div>
+                <label style="font-size:0.76rem; font-weight:700;">Finance / VAT Reference Note (on Invoices)</label>
+                <input id="admBillFinanceNote" type="text" class="input-field" style="width:100%;" />
+              </div>
+              <div style="display:flex; gap:1rem; flex-wrap:wrap; padding:0.35rem 0; font-size:0.8rem; font-weight:700;">
+                <label style="display:flex; align-items:center; gap:0.4rem; cursor:pointer;"><input type="checkbox" id="admBillPayfastEnabled" /> Enable PayFast Online Checkout</label>
+                <label style="display:flex; align-items:center; gap:0.4rem; cursor:pointer;"><input type="checkbox" id="admBillPayfastSandbox" /> PayFast Sandbox (Test Mode)</label>
+              </div>
+              <button type="submit" class="btn btn-primary btn-sm">💾 Save Billing &amp; Payment Settings</button>
+            </form>
+          </details>
+        </div>
       </div>
 
       <div class="grid-2" id="adminBroadcastAndPollsGrid">

@@ -19,10 +19,38 @@
     user: null,
     profile: null,
     registration: null,
+    ticketTiers: [],
+    billingSettings: null,
+    invoice: null,
     activeEventId: null,
     activeEventTitle: "STHS EventHub",
     listeners: new Set()
   };
+
+  function escHtml(v) {
+    return String(v ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function formatZar(amount) {
+    return `R ${Number(amount || 0).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+
+  function paymentBadgeHtml(status) {
+    const map = {
+      paid: { label: "✓ PAID", bg: "#0f766e", color: "#fff" },
+      complimentary: { label: "✓ COMPLIMENTARY", bg: "#007377", color: "#fff" },
+      pop_submitted: { label: "⏳ PoP UNDER REVIEW", bg: "#1d4ed8", color: "#fff" },
+      pro_forma: { label: "PRO-FORMA DUE", bg: "#b45309", color: "#fff" },
+      cancelled: { label: "CANCELLED", bg: "#64748b", color: "#fff" },
+      refunded: { label: "REFUNDED", bg: "#64748b", color: "#fff" }
+    };
+    const m = map[status] || { label: "PAYMENT PENDING", bg: "#b45309", color: "#fff" };
+    return `<span style="display:inline-block;padding:0.18rem 0.55rem;border-radius:999px;font-size:0.7rem;font-weight:800;letter-spacing:0.04em;background:${m.bg};color:${m.color};">${m.label}</span>`;
+  }
 
   function emitChange() {
     state.listeners.forEach((fn) => {
@@ -133,14 +161,64 @@
     return "delegate";
   }
 
+  async function loadEventBillingData() {
+    const sb = window.STHS_DB?.getClient();
+    if (!sb || !state.activeEventId) {
+      state.ticketTiers = [];
+      state.billingSettings = null;
+      return;
+    }
+    const [tiersRes, billRes] = await Promise.all([
+      sb.from("event_ticket_tiers").select("*").eq("event_id", state.activeEventId).eq("is_active", true).order("sort_order"),
+      sb.from("event_billing_settings").select("*").eq("event_id", state.activeEventId).maybeSingle()
+    ]);
+    state.ticketTiers = tiersRes.data || [];
+    state.billingSettings = billRes.data || null;
+    populateSignUpTierOptions();
+  }
+
+  function getSelectableTiers(includeOrganizerOnly = false) {
+    return (state.ticketTiers || []).filter((t) => includeOrganizerOnly || !t.requires_organizer_role);
+  }
+
+  function populateSignUpTierOptions(preferredRole = "") {
+    const wrap = document.getElementById("authSignUpBillingBlock");
+    const sel = document.getElementById("authSignUpTierSelect");
+    if (!wrap || !sel) return;
+    const tiers = getSelectableTiers(false);
+    if (!state.activeEventId || !tiers.length) {
+      wrap.style.display = "none";
+      return;
+    }
+    wrap.style.display = "block";
+    const prevVal = sel.value;
+    sel.innerHTML = tiers
+      .map((t) => `<option value="${t.id}" data-code="${escHtml(t.tier_code)}">${escHtml(t.name)} — ${t.price_zar > 0 ? formatZar(t.price_zar) : "Complimentary (R 0.00)"}</option>`)
+      .join("");
+
+    const role = preferredRole || document.getElementById("authSignUpRole")?.value || "delegate";
+    let match = null;
+    if (role === "student") match = tiers.find((t) => t.tier_code.includes("student"));
+    else if (role === "speaker") match = tiers.find((t) => t.tier_code.includes("speaker"));
+    else match = tiers.find((t) => t.tier_code === "in_person_delegate");
+
+    if (match) sel.value = match.id;
+    else if (prevVal && tiers.some((t) => t.id === prevVal)) sel.value = prevVal;
+  }
+
   async function refreshUserContext() {
     const sb = window.STHS_DB?.getClient();
     if (!sb) {
       state.user = null;
       state.profile = null;
       state.registration = null;
+      state.invoice = null;
       emitChange();
       return state;
+    }
+
+    if (state.activeEventId && !state.ticketTiers.length) {
+      await loadEventBillingData();
     }
 
     const { data: { session } } = await sb.auth.getSession();
@@ -149,6 +227,7 @@
     if (!state.user) {
       state.profile = null;
       state.registration = null;
+      state.invoice = null;
       emitChange();
       return state;
     }
@@ -174,15 +253,15 @@
     };
 
     if (state.activeEventId) {
-      const { data: reg } = await sb
-        .from("event_registrations")
-        .select("*")
-        .eq("event_id", state.activeEventId)
-        .eq("user_id", state.user.id)
-        .maybeSingle();
-      state.registration = reg || null;
+      const [regRes, invRes] = await Promise.all([
+        sb.from("event_registrations").select("*").eq("event_id", state.activeEventId).eq("user_id", state.user.id).maybeSingle(),
+        sb.from("registration_invoices").select("*").eq("event_id", state.activeEventId).eq("user_id", state.user.id).order("created_at", { ascending: false }).limit(1)
+      ]);
+      state.registration = regRes.data || null;
+      state.invoice = (invRes.data && invRes.data[0]) || null;
     } else {
       state.registration = null;
+      state.invoice = null;
     }
 
     emitChange();
@@ -195,6 +274,10 @@
     ensureModalsInDom();
 
     const urlErr = readAuthUrlError();
+    const queryParams = new URLSearchParams(window.location.search);
+    const paymentOutcome = queryParams.get("payment") || "";
+    const paymentInv = queryParams.get("inv") || "";
+
     const sb = window.STHS_DB?.getClient();
     if (sb) {
       sb.auth.onAuthStateChange((event, _session) => {
@@ -207,9 +290,19 @@
         }
         refreshUserContext();
       });
+      await loadEventBillingData();
       await refreshUserContext();
       if (state.user) {
         cleanAuthParamsFromUrl();
+        if (paymentOutcome === "success") {
+          window.history.replaceState({}, document.title, window.location.pathname);
+          window.STHS_DB.showToast(`Payment received for ${paymentInv || "your registration"}! Loading your official receipt…`, "🎉");
+          setTimeout(() => openInvoiceModal(), 450);
+        } else if (paymentOutcome === "cancelled") {
+          window.history.replaceState({}, document.title, window.location.pathname);
+          window.STHS_DB.showToast("Online payment was cancelled. Your Pro-Forma Invoice remains available anytime.", "ℹ️");
+          setTimeout(() => openInvoiceModal(), 450);
+        }
       } else if (urlErr) {
         cleanAuthParamsFromUrl();
         openAuthModal("signin");
@@ -223,9 +316,10 @@
     }
   }
 
-  function setActiveEvent(eventId, eventTitle) {
+  async function setActiveEvent(eventId, eventTitle) {
     state.activeEventId = eventId;
     if (eventTitle) state.activeEventTitle = eventTitle;
+    await loadEventBillingData();
     return refreshUserContext();
   }
 
@@ -356,7 +450,28 @@
               <div id="authSignUpApprovalHint" class="sths-alert sths-alert-info" style="display:none; font-size:0.8rem;">
                 You will receive immediate <strong>Delegate</strong> access upon sign-up while your requested committee/reviewer/partner permissions await administrator approval.
               </div>
-              <button type="submit" class="sths-btn sths-btn-primary" style="width:100%;">Create Account &amp; Register</button>
+              <div id="authSignUpBillingBlock" style="display:none; background:#f8fafc; border:1.5px solid #dbe4ee; border-radius:12px; padding:0.8rem 0.9rem; margin-bottom:0.85rem;">
+                <div style="font-size:0.74rem; font-weight:800; letter-spacing:0.06em; text-transform:uppercase; color:#003b5c; margin-bottom:0.5rem;">Symposium Registration Fee &amp; Invoice</div>
+                <div class="sths-form-group" style="margin-bottom:0.65rem;">
+                  <label class="sths-label" for="authSignUpTierSelect">Registration Pass / Fee Tier *</label>
+                  <select id="authSignUpTierSelect" class="sths-select"></select>
+                </div>
+                <div class="sths-form-row">
+                  <div class="sths-form-group" style="margin-bottom:0;">
+                    <label class="sths-label" for="authSignUpPaymentMethod">Payment Option *</label>
+                    <select id="authSignUpPaymentMethod" class="sths-select">
+                      <option value="payfast">PayFast Online (Card / Instant EFT)</option>
+                      <option value="eft">Institutional Bank EFT (Pro-Forma Invoice)</option>
+                      <option value="purchase_order">University Purchase Order (PO)</option>
+                    </select>
+                  </div>
+                  <div class="sths-form-group" style="margin-bottom:0;">
+                    <label class="sths-label" for="authSignUpPoRef">PO / VAT No. (Optional)</label>
+                    <input id="authSignUpPoRef" type="text" class="sths-input" placeholder="e.g. PO-2027-014" />
+                  </div>
+                </div>
+              </div>
+              <button type="submit" class="sths-btn sths-btn-primary" style="width:100%;">Create Account &amp; Generate Invoice</button>
             </form>
 
             <!-- Forgot Password Form (toggled cleanly from Sign In) -->
@@ -424,8 +539,9 @@
                   <span>List my profile in the Inter-University Speakers &amp; Delegates Networking Directory</span>
                 </label>
               </div>
-              <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
-                <button type="submit" class="sths-btn sths-btn-primary" style="flex:1;">Save Profile &amp; Registration</button>
+              <div style="display:flex; gap:0.55rem; flex-wrap:wrap;">
+                <button type="submit" class="sths-btn sths-btn-primary" style="flex:1; min-width:170px;">Save Profile &amp; Registration</button>
+                <button type="button" class="sths-btn sths-btn-outline sths-btn-sm" id="sthsOpenInvoiceFromAuthBtn">🧾 Payment &amp; Invoice</button>
                 <button type="button" class="sths-btn sths-btn-outline sths-btn-sm" id="sthsOpenBadgeFromAuthBtn">QR Pass</button>
                 <button type="button" class="sths-btn sths-btn-outline sths-btn-sm" id="sthsSignOutBtn">Sign Out</button>
               </div>
@@ -462,6 +578,20 @@
           <div id="sthsQrBadgeBody"></div>
         </div>
       </div>
+
+      <!-- Registration Payment Gateway, EFT PoP Upload & Printable Tax Invoice Modal -->
+      <div class="sths-modal-backdrop" id="sthsInvoiceModal">
+        <div class="sths-modal" role="dialog" aria-modal="true" aria-labelledby="sthsInvoiceHeading" style="max-width:600px;">
+          <div class="sths-modal-header">
+            <div>
+              <h3 id="sthsInvoiceHeading" class="sths-modal-title">Symposium Payment &amp; Official Invoice</h3>
+              <p class="sths-modal-subtitle" id="sthsInvoiceSub">Pay securely via PayFast, upload Institutional EFT Proof of Payment, or download your PDF invoice.</p>
+            </div>
+            <button type="button" class="sths-modal-close" data-close-sths-modal="sthsInvoiceModal" aria-label="Close">✕</button>
+          </div>
+          <div id="sthsInvoiceBody"></div>
+        </div>
+      </div>
     `;
     document.body.appendChild(wrapper);
     bindModalEvents();
@@ -489,7 +619,7 @@
       });
     });
 
-    ["sthsAuthModal", "sthsQrBadgeModal"].forEach((id) => {
+    ["sthsAuthModal", "sthsQrBadgeModal", "sthsInvoiceModal"].forEach((id) => {
       const el = document.getElementById(id);
       el?.addEventListener("click", (e) => { if (e.target === el) el.classList.remove("open"); });
     });
@@ -501,6 +631,7 @@
         document.getElementById("sthsSignInForm").style.display = mode === "signin" ? "block" : "none";
         document.getElementById("sthsSignUpForm").style.display = mode === "signup" ? "block" : "none";
         document.getElementById("sthsForgotPasswordForm").style.display = "none";
+        if (mode === "signup") populateSignUpTierOptions();
         setStatusBanner(null, "");
       });
     });
@@ -508,6 +639,7 @@
     document.getElementById("authSignUpRole")?.addEventListener("change", (e) => {
       const hint = document.getElementById("authSignUpApprovalHint");
       if (hint) hint.style.display = isPrivilegedRole(e.target.value) ? "block" : "none";
+      populateSignUpTierOptions(e.target.value);
     });
 
     document.getElementById("sthsResetPasswordForm")?.addEventListener("submit", async (e) => {
@@ -644,29 +776,64 @@
           requested_platform_role: ["super_admin", "planning_committee"].includes(chosenRole) ? chosenRole : ""
         });
 
+        let createdInvoice = null;
         if (state.activeEventId) {
+          const selectedTierId = document.getElementById("authSignUpTierSelect")?.value || "";
+          const selectedTierObj = state.ticketTiers.find((t) => t.id === selectedTierId);
+          const payMethod = document.getElementById("authSignUpPaymentMethod")?.value || "eft";
+          const poRef = document.getElementById("authSignUpPoRef")?.value.trim() || "";
+
           await sb.from("event_registrations").upsert({
             event_id: state.activeEventId,
             user_id: data.user.id,
             role: isPrivilegedRole(chosenRole) ? "delegate" : chosenRole,
             requested_role: isPrivilegedRole(chosenRole) ? chosenRole : "",
-            attendance_mode: "in_person",
+            attendance_mode: selectedTierObj?.attendance_mode || "in_person",
             public_in_directory: true
           }, { onConflict: "event_id,user_id" });
+
+          const isRootAdmin = email.toLowerCase() === "spha.msimang@wits.ac.za";
+          const compTier = isRootAdmin ? state.ticketTiers.find((t) => t.is_complimentary) : null;
+          const finalTierId = compTier?.id || selectedTierId || state.ticketTiers[0]?.id;
+
+          if (finalTierId) {
+            const { data: invRpc } = await sb.rpc("create_or_get_my_invoice", {
+              p_event_id: state.activeEventId,
+              p_tier_id: finalTierId,
+              p_payment_method: compTier ? "complimentary" : payMethod,
+              p_billing_org: university,
+              p_billing_po: poRef
+            });
+            if (invRpc?.ok && invRpc.invoice) createdInvoice = invRpc.invoice;
+          }
+
+          // Fire automated branded registration confirmation email (from efundanathi@wits.ac.za when SMTP configured)
+          sb.functions
+            .invoke("send-sths-email", {
+              body: {
+                type: "registration_confirmed",
+                event_id: state.activeEventId,
+                invoice_id: createdInvoice?.id || ""
+              }
+            })
+            .catch(() => {});
         }
 
         await refreshUserContext();
         window.STHS_DB.showToast(
           isPrivilegedRole(chosenRole)
-            ? `Account created! Your request for ${formatRoleLabel(chosenRole)} access has been sent for administrator approval.`
-            : "Account created & registered!",
+            ? `Account created! Request for ${formatRoleLabel(chosenRole)} sent for approval & invoice generated.`
+            : "Registration confirmed & official invoice generated!",
           "🎉"
         );
         document.getElementById("sthsAuthModal")?.classList.remove("open");
+        if (state.activeEventId) {
+          openInvoiceModal();
+        }
       } else {
         setStatusBanner(
           "success",
-          `Confirmation email sent to <strong>${email}</strong>. Click the verification link in your inbox to activate your account.`
+          `Confirmation email sent to <strong>${escHtml(email)}</strong>. Click the verification link in your inbox to activate your account and access your invoice.`
         );
       }
     });
@@ -724,6 +891,11 @@
         "✅"
       );
       document.getElementById("sthsAuthModal")?.classList.remove("open");
+    });
+
+    document.getElementById("sthsOpenInvoiceFromAuthBtn")?.addEventListener("click", () => {
+      document.getElementById("sthsAuthModal")?.classList.remove("open");
+      openInvoiceModal();
     });
 
     document.getElementById("sthsOpenBadgeFromAuthBtn")?.addEventListener("click", () => {
@@ -793,10 +965,12 @@
       }
 
       const activeRoleLabel = formatRoleLabel(getEffectiveRole());
+      const invStatus = state.invoice?.payment_status || r.payment_status || (isSuperAdmin() ? "complimentary" : "pro_forma");
       document.getElementById("sthsSignedInSummary").innerHTML = `
-        <strong>${[p.academic_title, p.full_name].filter(Boolean).join(" ") || state.user.email}</strong>
-        · Active Access: <strong>${activeRoleLabel}</strong>
-        ${r.badge_code ? ` · Pass ID: <code>${r.badge_code}</code>` : ""}
+        <strong>${escHtml([p.academic_title, p.full_name].filter(Boolean).join(" ") || state.user.email)}</strong>
+        · Active Access: <strong>${escHtml(activeRoleLabel)}</strong>
+        ${r.badge_code ? ` · Pass ID: <code>${escHtml(r.badge_code)}</code>` : ""}
+        ${state.activeEventId ? ` · ${paymentBadgeHtml(invStatus)}` : ""}
       `;
 
       const pendingBox = document.getElementById("sthsPendingRoleNotice");
@@ -868,9 +1042,461 @@
           </span>
           <span style="background:rgba(197,150,39,0.35); padding:0.25rem 0.7rem; border-radius:999px;">⚡ ${r.xp_points || 0} XP</span>
         </div>
+        ${
+          state.activeEventId
+            ? `<div style="margin-top:0.9rem; display:flex; justify-content:center; align-items:center; gap:0.55rem; flex-wrap:wrap;">
+                ${paymentBadgeHtml(state.invoice?.payment_status || r.payment_status || (isSuperAdmin() ? "complimentary" : "pro_forma"))}
+                <button type="button" class="sths-btn sths-btn-outline sths-btn-sm" id="qrOpenInvoiceBtn" style="background:rgba(255,255,255,0.14); color:#fff; border-color:rgba(255,255,255,0.4);">🧾 Payment &amp; Invoice</button>
+              </div>`
+            : ""
+        }
       </div>
     `;
     modal.classList.add("open");
+    document.getElementById("qrOpenInvoiceBtn")?.addEventListener("click", () => {
+      modal.classList.remove("open");
+      openInvoiceModal();
+    });
+  }
+
+  function downloadSymposiumIcs() {
+    const ics = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "PRODID:-//Wits STHS EventHub//GO Game-On! Symposium 2027//EN",
+      "BEGIN:VEVENT",
+      "UID:go-game-on-2027@efundanathi.wits.ac.za",
+      "DTSTAMP:20261123T080000Z",
+      "DTSTART:20270311T063000Z",
+      "DTEND:20270312T150000Z",
+      "SUMMARY:GO Game-On! Symposium 2027 — Wits School of Therapeutic Sciences",
+      "DESCRIPTION:Playing Our Way Forward: Traditional Games, Virtual Spaces and Community. Hosted by Wits School of Therapeutic Sciences & eFundanathi eZone. Portal: https://witsezone.github.io/sthsevent/game-on-symposium-2027/",
+      "LOCATION:eFundanathi eZone, Wits Education Campus, Johannesburg & Online (Zoom / MS Teams)",
+      "URL:https://witsezone.github.io/sthsevent/game-on-symposium-2027/",
+      "END:VEVENT",
+      "END:VCALENDAR"
+    ].join("\r\n");
+    const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "GO-Game-On-Symposium-2027.ics";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+  }
+
+  function printInvoiceDocument(inv, billingOverride = null) {
+    if (!inv) return;
+    const b = billingOverride || state.billingSettings || {};
+    const isPaid = inv.payment_status === "paid" || inv.payment_status === "complimentary";
+    const docLabel =
+      inv.payment_status === "paid"
+        ? "OFFICIAL TAX INVOICE & PAYMENT RECEIPT"
+        : inv.payment_status === "complimentary"
+        ? "COMPLIMENTARY REGISTRATION CONFIRMATION"
+        : "PRO-FORMA TAX INVOICE";
+    const issuedStr = inv.issued_at ? new Date(inv.issued_at).toLocaleDateString("en-ZA", { year: "numeric", month: "long", day: "numeric" }) : new Date().toLocaleDateString("en-ZA");
+    const paidStr = inv.paid_at ? new Date(inv.paid_at).toLocaleDateString("en-ZA", { year: "numeric", month: "long", day: "numeric" }) : "";
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>${escHtml(inv.invoice_number)} · ${escHtml(docLabel)}</title>
+  <style>
+    @page { size: A4; margin: 16mm; }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #1e293b; margin: 0; padding: 24px; background: #f8fafc; }
+    .sheet { max-width: 780px; margin: 0 auto; background: #fff; border: 1px solid #cbd5e1; border-radius: 12px; padding: 34px 38px; position: relative; overflow: hidden; }
+    .watermark { position: absolute; top: 38%; left: 50%; transform: translate(-50%,-50%) rotate(-24deg); font-size: 92px; font-weight: 900; letter-spacing: 8px; color: ${isPaid ? "rgba(15,118,110,0.09)" : "rgba(180,83,9,0.07)"}; pointer-events: none; user-select: none; }
+    .hdr { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #003b5c; padding-bottom: 18px; margin-bottom: 22px; gap: 20px; }
+    .brand-eyebrow { font-size: 11px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: #007377; }
+    .brand-title { font-size: 20px; font-weight: 800; color: #003b5c; margin: 4px 0 4px; }
+    .brand-meta { font-size: 12px; color: #475569; line-height: 1.5; }
+    .doc-box { text-align: right; }
+    .doc-type { display: inline-block; padding: 6px 12px; border-radius: 6px; font-size: 11px; font-weight: 800; letter-spacing: 0.6px; color: #fff; background: ${isPaid ? "#0f766e" : "#b45309"}; }
+    .inv-num { font-size: 18px; font-weight: 800; color: #003b5c; margin: 8px 0 2px; font-family: ui-monospace, SFMono-Regular, monospace; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 22px; }
+    .panel { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px; font-size: 12.5px; line-height: 1.55; }
+    .panel h4 { margin: 0 0 6px; font-size: 11px; letter-spacing: 0.8px; text-transform: uppercase; color: #64748b; }
+    table.items { width: 100%; border-collapse: collapse; margin: 14px 0 18px; font-size: 13px; }
+    table.items th { background: #003b5c; color: #fff; text-align: left; padding: 10px 12px; font-size: 11.5px; letter-spacing: 0.5px; text-transform: uppercase; }
+    table.items td { padding: 12px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+    .num { text-align: right; white-space: nowrap; }
+    .totals { margin-left: auto; width: 300px; font-size: 13.5px; }
+    .totals tr td { padding: 5px 0; }
+    .totals tr.grand td { border-top: 2px solid #003b5c; padding-top: 9px; font-size: 16px; font-weight: 800; color: #003b5c; }
+    .bank { margin-top: 22px; padding: 15px 18px; border-radius: 8px; border: 1px solid #99f6e4; background: #f0fdfa; font-size: 12.5px; line-height: 1.55; }
+    .bank h4 { margin: 0 0 8px; color: #003b5c; font-size: 13px; }
+    .footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #64748b; display: flex; justify-content: space-between; gap: 12px; }
+    .no-print { text-align: center; margin-bottom: 16px; }
+    .no-print button { background: #007377; color: #fff; border: none; border-radius: 8px; padding: 10px 20px; font-weight: 700; font-size: 14px; cursor: pointer; margin: 0 5px; }
+    .no-print button.sec { background: #334155; }
+    @media print { body { background: #fff; padding: 0; } .sheet { border: none; border-radius: 0; padding: 0; } .no-print { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="no-print">
+    <button onclick="window.print()">🖨️ Print / Save as PDF</button>
+    <button class="sec" onclick="window.close()">Close Window</button>
+  </div>
+  <div class="sheet">
+    <div class="watermark">${isPaid ? (inv.payment_status === "complimentary" ? "COMPLIMENTARY" : "PAID") : "PRO-FORMA"}</div>
+    <div class="hdr">
+      <div>
+        <div class="brand-eyebrow">Wits School of Therapeutic Sciences · STHS EventHub</div>
+        <div class="brand-title">${escHtml(b.institution_legal_name || "University of the Witwatersrand, Johannesburg — School of Therapeutic Sciences")}</div>
+        <div class="brand-meta">
+          ${escHtml(b.unit_name || "eFundanathi eZone (STHS)")}<br/>
+          ${escHtml(b.billing_address || "Wits Education Campus, 27 St Andrews Road, Parktown, Johannesburg, 2193, South Africa")}<br/>
+          Finance &amp; Enquiries: ${escHtml(b.finance_contact_email || "efundanathi@wits.ac.za")} · ${escHtml(b.finance_reference_note || "Public Higher Education Institution")}
+        </div>
+      </div>
+      <div class="doc-box">
+        <span class="doc-type">${escHtml(docLabel)}</span>
+        <div class="inv-num">${escHtml(inv.invoice_number)}</div>
+        <div class="brand-meta">
+          Issued: <strong>${escHtml(issuedStr)}</strong><br/>
+          ${paidStr ? `Paid Date: <strong style="color:#0f766e;">${escHtml(paidStr)}</strong><br/>` : ""}
+          ${inv.payment_reference ? `Payment Ref: <code>${escHtml(inv.payment_reference)}</code>` : ""}
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="panel">
+        <h4>Billed To (Delegate / Institution)</h4>
+        <strong>${escHtml(inv.billing_name || "Registered Delegate")}</strong><br/>
+        ${escHtml(inv.billing_organization || "University / Partner Institution")}<br/>
+        Email: ${escHtml(inv.billing_email || "")}<br/>
+        ${inv.billing_vat_or_po ? `PO / VAT Reference: <strong>${escHtml(inv.billing_vat_or_po)}</strong>` : ""}
+      </div>
+      <div class="panel">
+        <h4>Symposium Details</h4>
+        <strong>${escHtml(state.activeEventTitle || "GO Game-On! Symposium 2027")}</strong><br/>
+        Dates: <strong>11–12 March 2027</strong><br/>
+        Venue: eFundanathi eZone, Wits Education Campus &amp; Online<br/>
+        Attendance Mode: <strong>${inv.attendance_mode === "online" ? "Online (Zoom & MS Teams)" : "In-Person + Online Hybrid"}</strong>
+      </div>
+    </div>
+
+    <table class="items">
+      <thead>
+        <tr>
+          <th>Description</th>
+          <th class="num">Qty</th>
+          <th class="num">Unit Price (ZAR)</th>
+          <th class="num">Total (ZAR)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <strong>${escHtml(inv.tier_name)}</strong><br/>
+            <span style="font-size:11.5px;color:#64748b;">GO Game-On! Symposium 2027 · Full program access, digital pass, and proceedings</span>
+          </td>
+          <td class="num">1</td>
+          <td class="num">${formatZar(inv.amount_zar)}</td>
+          <td class="num"><strong>${formatZar(inv.amount_zar)}</strong></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <table class="totals">
+      <tr><td>Subtotal</td><td class="num">${formatZar(inv.amount_zar)}</td></tr>
+      <tr><td>VAT (Higher Education Institution)</td><td class="num">R 0.00</td></tr>
+      <tr class="grand"><td>${isPaid ? "Total Paid (ZAR)" : "Amount Due (ZAR)"}</td><td class="num">${formatZar(inv.amount_zar)}</td></tr>
+    </table>
+
+    ${
+      !isPaid
+        ? `<div class="bank">
+            <h4>Institutional EFT / Bank Transfer Details (South Africa)</h4>
+            Bank: <strong>${escHtml(b.bank_name || "First National Bank (FNB)")}</strong> · Account Holder: <strong>${escHtml(b.account_holder || "University of the Witwatersrand")}</strong><br/>
+            Account Number: <strong>${escHtml(b.account_number || "")}</strong> · Branch Code: <strong>${escHtml(b.branch_code || "250655")}</strong> · SWIFT: <strong>${escHtml(b.swift_code || "FIRNZAJJ")}</strong><br/>
+            Cost Centre / Event Code: <strong>${escHtml(b.cost_centre_reference || "GO2027-STHS")}</strong> · <strong>Mandatory Payment Reference: ${escHtml(inv.invoice_number)}</strong><br/>
+            <span style="font-size:11.5px;color:#334155;">${escHtml(b.invoice_terms || "")}</span>
+          </div>`
+        : `<div class="bank" style="background:#ecfdf5;border-color:#6ee7b7;">
+            <h4>✓ Payment Confirmed — Official Receipt</h4>
+            This document confirms full settlement of <strong>${formatZar(inv.amount_zar)}</strong> via <strong style="text-transform:uppercase;">${escHtml(inv.payment_method)}</strong>${inv.payment_reference ? ` (Reference: <strong>${escHtml(inv.payment_reference)}</strong>)` : ""}. Please present your Digital QR Pass at eFundanathi eZone check-in or join online via the live symposium portal.
+          </div>`
+    }
+
+    <div class="footer">
+      <span>Generated via Wits STHS EventHub · https://witsezone.github.io/sthsevent/game-on-symposium-2027/</span>
+      <span>Contact: ${escHtml(b.finance_contact_email || "efundanathi@wits.ac.za")}</span>
+    </div>
+  </div>
+</body>
+</html>`;
+
+    const win = window.open("", "_blank", "width=900,height=960");
+    if (!win) {
+      window.STHS_DB.showToast("Please allow pop-ups in your browser to download/print your PDF invoice.", "⚠️");
+      return;
+    }
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+  }
+
+  async function openInvoiceModal() {
+    ensureModalsInDom();
+    const modal = document.getElementById("sthsInvoiceModal");
+    const body = document.getElementById("sthsInvoiceBody");
+
+    if (!state.user) {
+      openAuthModal("signup");
+      return;
+    }
+
+    if (!state.ticketTiers.length && state.activeEventId) {
+      await loadEventBillingData();
+    }
+
+    const sb = window.STHS_DB?.getClient();
+    // Auto-issue a default invoice if signed-in user registered earlier without one
+    if (sb && state.activeEventId && !state.invoice && state.ticketTiers.length) {
+      const compEligible = isOrganizer() || isReviewer();
+      const defaultTier =
+        (compEligible && state.ticketTiers.find((t) => t.is_complimentary)) ||
+        state.ticketTiers.find((t) => !t.requires_organizer_role) ||
+        state.ticketTiers[0];
+      if (defaultTier) {
+        const { data: rpcRes } = await sb.rpc("create_or_get_my_invoice", {
+          p_event_id: state.activeEventId,
+          p_tier_id: defaultTier.id,
+          p_payment_method: defaultTier.is_complimentary ? "complimentary" : "eft",
+          p_billing_org: state.profile?.university || "",
+          p_billing_po: ""
+        });
+        if (rpcRes?.ok && rpcRes.invoice) {
+          state.invoice = rpcRes.invoice;
+        }
+      }
+    }
+
+    const inv = state.invoice;
+    const b = state.billingSettings || {};
+    const isPaid = inv && ["paid", "complimentary"].includes(inv.payment_status);
+    const selectableTiers = getSelectableTiers(isOrganizer() || isReviewer());
+
+    if (!inv) {
+      body.innerHTML = `<div class="sths-alert sths-alert-info">Registration billing tiers are being finalized by the Organizing Committee. Please check back shortly.</div>`;
+      modal.classList.add("open");
+      return;
+    }
+
+    body.innerHTML = `
+      <div style="background:#f8fafc; border:1.5px solid #dbe4ee; border-radius:12px; padding:0.95rem 1.05rem; margin-bottom:0.95rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.5rem;">
+          <div>
+            <div style="font-size:0.72rem; font-weight:800; color:#64748b; text-transform:uppercase; letter-spacing:0.05em;">Invoice Number</div>
+            <div style="font-family:var(--font-mono); font-weight:800; font-size:1.05rem; color:#003b5c;">${escHtml(inv.invoice_number)}</div>
+          </div>
+          ${paymentBadgeHtml(inv.payment_status)}
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:0.5rem; border-top:1px solid #e2e8f0; padding-top:0.55rem;">
+          <div style="font-size:0.86rem; font-weight:700; color:#1e293b;">${escHtml(inv.tier_name)}</div>
+          <div style="font-size:1.25rem; font-weight:900; color:#003b5c;">${formatZar(inv.amount_zar)}</div>
+        </div>
+        ${inv.payment_reference ? `<div style="font-size:0.78rem; color:#0f766e; margin-top:0.35rem;">Payment Reference: <code>${escHtml(inv.payment_reference)}</code></div>` : ""}
+      </div>
+
+      ${
+        !isPaid
+          ? `
+        <details style="margin-bottom:0.9rem; background:#fff; border:1.5px solid #e2e8f0; border-radius:10px; padding:0.65rem 0.85rem;">
+          <summary style="cursor:pointer; font-size:0.82rem; font-weight:700; color:#003b5c;">✏️ Change Registration Tier or PO / VAT Reference</summary>
+          <form id="sthsUpdateInvoiceTierForm" style="margin-top:0.7rem; display:flex; flex-direction:column; gap:0.6rem;">
+            <div>
+              <label class="sths-label" for="invSwitchTierSel">Registration Pass</label>
+              <select id="invSwitchTierSel" class="sths-select">
+                ${selectableTiers
+                  .map((t) => `<option value="${t.id}" ${t.id === inv.tier_id ? "selected" : ""}>${escHtml(t.name)} — ${t.price_zar > 0 ? formatZar(t.price_zar) : "Complimentary"}</option>`)
+                  .join("")}
+              </select>
+            </div>
+            <div class="sths-form-row">
+              <div>
+                <label class="sths-label" for="invSwitchOrgInput">Billed Institution</label>
+                <input id="invSwitchOrgInput" type="text" class="sths-input" value="${escHtml(inv.billing_organization || state.profile?.university || "")}" />
+              </div>
+              <div>
+                <label class="sths-label" for="invSwitchPoInput">PO / VAT Number</label>
+                <input id="invSwitchPoInput" type="text" class="sths-input" value="${escHtml(inv.billing_vat_or_po || "")}" placeholder="Optional PO #" />
+              </div>
+            </div>
+            <button type="submit" class="sths-btn sths-btn-outline sths-btn-sm">Update Pro-Forma Invoice</button>
+          </form>
+        </details>
+
+        <!-- Option 1: PayFast Online Checkout -->
+        <div style="background:#f0fdfa; border:1.5px solid #99f6e4; border-radius:12px; padding:0.9rem 1rem; margin-bottom:0.85rem;">
+          <div style="font-weight:800; color:#003b5c; font-size:0.9rem; margin-bottom:0.3rem;">💳 Option 1 · Instant Online Payment (PayFast)</div>
+          <p style="font-size:0.8rem; color:#334155; margin:0 0 0.65rem;">Pay securely with Visa, Mastercard, Instant EFT, Apple Pay, or Samsung Pay. Your official PAID Tax Invoice is issued automatically.</p>
+          <button type="button" class="sths-btn sths-btn-primary" id="sthsPayFastBtn" style="width:100%;">Pay ${formatZar(inv.amount_zar)} Online with PayFast →</button>
+          <div id="sthsPayFastStatus" style="margin-top:0.5rem;"></div>
+        </div>
+
+        <!-- Option 2: Institutional EFT / Purchase Order -->
+        <div style="background:#fffbeb; border:1.5px solid #fde68a; border-radius:12px; padding:0.9rem 1rem; margin-bottom:0.95rem;">
+          <div style="font-weight:800; color:#78350f; font-size:0.9rem; margin-bottom:0.35rem;">🏦 Option 2 · Institutional Bank EFT / University Purchase Order</div>
+          <div style="font-size:0.79rem; color:#451a03; line-height:1.55; margin-bottom:0.65rem;">
+            <strong>Bank:</strong> ${escHtml(b.bank_name || "First National Bank (FNB)")}<br/>
+            <strong>Account Holder:</strong> ${escHtml(b.account_holder || "University of the Witwatersrand")}<br/>
+            <strong>Account Number:</strong> ${escHtml(b.account_number || "")} · <strong>Branch:</strong> ${escHtml(b.branch_code || "250655")}<br/>
+            <strong>Mandatory Reference:</strong> <code style="font-weight:800; color:#003b5c;">${escHtml(inv.invoice_number)}</code>
+          </div>
+          <form id="sthsUploadPopForm" style="display:flex; flex-direction:column; gap:0.55rem;">
+            <label class="sths-label" for="sthsPopFileInput" style="margin-bottom:0;">Upload Proof of Payment (PoP) or University Purchase Order (PDF / PNG / JPG)</label>
+            <input id="sthsPopFileInput" type="file" class="sths-input" accept=".pdf,.png,.jpg,.jpeg,.webp" required />
+            <button type="submit" class="sths-btn sths-btn-outline sths-btn-sm" id="sthsUploadPopBtn">📤 Submit Proof of Payment for Finance Verification</button>
+          </form>
+          ${inv.pop_file_name ? `<div style="font-size:0.78rem; color:#1d4ed8; font-weight:700; margin-top:0.45rem;">✓ Submitted: ${escHtml(inv.pop_file_name)} (awaiting Wits Finance verification)</div>` : ""}
+        </div>
+      `
+          : `
+        <div class="sths-alert sths-alert-success" style="margin-bottom:0.95rem;">
+          <strong>✓ Registration Paid &amp; Confirmed!</strong> Your official PAID Tax Invoice &amp; Receipt is ready to download or print below.
+        </div>
+      `
+      }
+
+      <div style="display:flex; gap:0.55rem; flex-wrap:wrap;">
+        <button type="button" class="sths-btn sths-btn-primary" id="sthsPrintInvoiceBtn" style="flex:1; min-width:190px;">
+          🖨️ ${isPaid ? "Download / Print PAID Invoice (PDF)" : "Download / Print Pro-Forma Invoice (PDF)"}
+        </button>
+        <button type="button" class="sths-btn sths-btn-outline sths-btn-sm" id="sthsEmailInvoiceBtn">✉️ Email Copy</button>
+        <button type="button" class="sths-btn sths-btn-outline sths-btn-sm" id="sthsDownloadIcsBtn">📅 Add to Calendar</button>
+      </div>
+    `;
+
+    modal.classList.add("open");
+
+    document.getElementById("sthsPrintInvoiceBtn")?.addEventListener("click", () => {
+      printInvoiceDocument(state.invoice, state.billingSettings);
+    });
+
+    document.getElementById("sthsDownloadIcsBtn")?.addEventListener("click", () => {
+      downloadSymposiumIcs();
+      window.STHS_DB.showToast("Symposium calendar invite (.ics) downloaded!", "📅");
+    });
+
+    document.getElementById("sthsEmailInvoiceBtn")?.addEventListener("click", async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      btn.textContent = "Sending…";
+      try {
+        const { data, error } = await sb.functions.invoke("send-sths-email", {
+          body: {
+            type: isPaid ? "payment_receipt" : "registration_confirmed",
+            event_id: state.activeEventId,
+            invoice_id: inv.id
+          }
+        });
+        if (error) throw error;
+        if (data?.sent) {
+          window.STHS_DB.showToast(`Confirmation & invoice emailed to ${data.to} from efundanathi@wits.ac.za!`, "✉️");
+        } else {
+          window.STHS_DB.showToast("Automated Wits email dispatch is being activated by IT. You can download your PDF invoice directly right now.", "ℹ️");
+        }
+      } catch (err) {
+        window.STHS_DB.showToast(err.message || "Could not send email copy.", "⚠️");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "✉️ Email Copy";
+      }
+    });
+
+    document.getElementById("sthsUpdateInvoiceTierForm")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const newTierId = document.getElementById("invSwitchTierSel").value;
+      const newOrg = document.getElementById("invSwitchOrgInput").value.trim();
+      const newPo = document.getElementById("invSwitchPoInput").value.trim();
+      const { data: rpcRes, error } = await sb.rpc("create_or_get_my_invoice", {
+        p_event_id: state.activeEventId,
+        p_tier_id: newTierId,
+        p_payment_method: inv.payment_method || "eft",
+        p_billing_org: newOrg,
+        p_billing_po: newPo
+      });
+      if (error || !rpcRes?.ok) {
+        window.STHS_DB.showToast(error?.message || rpcRes?.error || "Could not update invoice.", "⚠️");
+        return;
+      }
+      state.invoice = rpcRes.invoice;
+      await refreshUserContext();
+      window.STHS_DB.showToast("Invoice updated!", "✅");
+      openInvoiceModal();
+    });
+
+    document.getElementById("sthsPayFastBtn")?.addEventListener("click", async (e) => {
+      const btn = e.currentTarget;
+      const statusBox = document.getElementById("sthsPayFastStatus");
+      btn.disabled = true;
+      btn.textContent = "Connecting to PayFast…";
+      try {
+        const { data, error } = await sb.functions.invoke("payfast-checkout", {
+          body: { invoice_id: inv.id }
+        });
+        if (error) throw error;
+        if (data?.ok && data.action_url && data.fields) {
+          const form = document.createElement("form");
+          form.method = "POST";
+          form.action = data.action_url;
+          Object.entries(data.fields).forEach(([k, v]) => {
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = k;
+            input.value = String(v);
+            form.appendChild(input);
+          });
+          document.body.appendChild(form);
+          form.submit();
+          return;
+        }
+        statusBox.innerHTML = `<div class="sths-alert sths-alert-warn" style="font-size:0.79rem;margin:0;">${escHtml(data?.message || "Online PayFast checkout is not yet active. Please use Institutional EFT below.")}</div>`;
+      } catch (err) {
+        statusBox.innerHTML = `<div class="sths-alert sths-alert-error" style="font-size:0.79rem;margin:0;">${escHtml(err.message || "PayFast checkout error.")}</div>`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = `Pay ${formatZar(inv.amount_zar)} Online with PayFast →`;
+      }
+    });
+
+    document.getElementById("sthsUploadPopForm")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const file = document.getElementById("sthsPopFileInput")?.files?.[0];
+      if (!file) return;
+      const btn = document.getElementById("sthsUploadPopBtn");
+      btn.disabled = true;
+      btn.textContent = "Uploading Proof of Payment…";
+      try {
+        const safeName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+        const storagePath = `${state.user.id}/proof-of-payment/${safeName}`;
+        const { error: upErr } = await sb.storage.from("event-submissions").upload(storagePath, file, { upsert: true });
+        if (upErr) throw upErr;
+
+        const { error: updErr } = await sb
+          .from("registration_invoices")
+          .update({
+            payment_method: inv.payment_method === "purchase_order" ? "purchase_order" : "eft",
+            pop_file_url: storagePath,
+            pop_file_name: file.name
+          })
+          .eq("id", inv.id);
+        if (updErr) throw updErr;
+
+        await refreshUserContext();
+        window.STHS_DB.showToast("Proof of Payment uploaded! Wits Finance will verify and issue your official PAID receipt.", "✅");
+        openInvoiceModal();
+      } catch (err) {
+        window.STHS_DB.showToast(err.message || "Upload failed.", "⚠️");
+        btn.disabled = false;
+        btn.textContent = "📤 Submit Proof of Payment for Finance Verification";
+      }
+    });
   }
 
   function requireAuth(actionLabel = "continue") {
@@ -886,9 +1512,15 @@
     init,
     setActiveEvent,
     refreshUserContext,
+    loadEventBillingData,
     subscribe,
     openAuthModal,
     openQrBadgeModal,
+    openInvoiceModal,
+    printInvoiceDocument,
+    downloadSymposiumIcs,
+    formatZar,
+    paymentBadgeHtml,
     requireAuth,
     initialsFrom,
     formatRoleLabel,

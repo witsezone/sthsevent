@@ -1,0 +1,5 @@
+-- Local mirror of applied Supabase migration 0004_payments_invoices_and_billing
+-- Applied to project ryabexxorzpsuvdfxzyo (sths-eventhub) on 2026-11-23
+-- Includes: event_ticket_tiers, event_billing_settings, registration_invoices,
+-- sths_invoice_seq, guard_invoice_mutation, create_or_get_my_invoice,
+-- admin_list_invoices, admin_verify_invoice_payment, RLS policies, and FK indexes.

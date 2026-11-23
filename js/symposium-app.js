@@ -42,6 +42,10 @@
     sponsorInquiries: [],
     adminUsers: [],
     adminAuditLogs: [],
+    adminInvoices: [],
+    adminTicketTiers: [],
+    adminBillingSettings: null,
+    adminInvoiceFilter: "ALL",
     adminUserSearch: "",
     adminUserRoleFilter: "ALL",
     directMessages: [],
@@ -296,17 +300,26 @@
       }
 
       if (window.STHS_AUTH.isCommittee()) {
-        const [inqRes, usersRes, auditRes] = await Promise.all([
+        const [inqRes, usersRes, auditRes, invRes, tiersRes, billRes] = await Promise.all([
           sb.from("sponsor_inquiries").select("*").eq("event_id", ev.id).order("created_at", { ascending: false }),
           sb.rpc("admin_list_users_and_requests", { p_event_id: ev.id }),
-          sb.rpc("admin_list_role_audit", { p_event_id: ev.id })
+          sb.rpc("admin_list_role_audit", { p_event_id: ev.id }),
+          sb.rpc("admin_list_invoices", { p_event_id: ev.id }),
+          sb.from("event_ticket_tiers").select("*").eq("event_id", ev.id).order("sort_order"),
+          sb.from("event_billing_settings").select("*").eq("event_id", ev.id).maybeSingle()
         ]);
         state.sponsorInquiries = inqRes.data || [];
         state.adminUsers = usersRes.data || [];
         state.adminAuditLogs = auditRes.data || [];
+        state.adminInvoices = invRes.data || [];
+        state.adminTicketTiers = tiersRes.data || [];
+        state.adminBillingSettings = billRes.data || null;
       } else {
         state.adminUsers = [];
         state.adminAuditLogs = [];
+        state.adminInvoices = [];
+        state.adminTicketTiers = [];
+        state.adminBillingSettings = null;
       }
 
       if (window.STHS_AUTH.isSponsor()) {
@@ -1321,11 +1334,13 @@
     const stageSel = document.getElementById("admStageSelect");
     const inqEl = document.getElementById("adminSponsorInquiriesList");
     const accessCard = document.getElementById("adminUserAccessCard");
+    const financeCard = document.getElementById("adminFinanceCard");
     const broadcastGrid = document.getElementById("adminBroadcastAndPollsGrid");
     const exportCluster = document.getElementById("adminExportCluster");
     const policyHint = document.getElementById("adminRbacPolicyHint");
 
     if (accessCard) accessCard.style.display = isComm ? "block" : "none";
+    if (financeCard) financeCard.style.display = isComm ? "block" : "none";
     if (broadcastGrid) broadcastGrid.style.display = isComm ? "grid" : "none";
     if (exportCluster) exportCluster.style.display = isComm ? "flex" : "none";
 
@@ -1353,6 +1368,7 @@
     if (isComm) {
       renderAdminUsersList();
       renderAdminAuditLog();
+      renderAdminFinancePanel();
     }
 
     if (stageSel && state.stages.length) {
@@ -1536,6 +1552,183 @@
       `
       )
       .join("");
+  }
+
+  function renderAdminFinancePanel() {
+    const sumEl = document.getElementById("adminFinanceSummaryGrid");
+    const listEl = document.getElementById("adminInvoicesListContainer");
+    const tiersEl = document.getElementById("adminTicketTiersEditor");
+
+    const invs = state.adminInvoices || [];
+    const paidInvs = invs.filter((i) => i.payment_status === "paid");
+    const popInvs = invs.filter((i) => i.payment_status === "pop_submitted");
+    const dueInvs = invs.filter((i) => i.payment_status === "pro_forma");
+    const totalPaidZar = paidInvs.reduce((s, i) => s + Number(i.amount_zar || 0), 0);
+    const totalPendingZar = [...popInvs, ...dueInvs].reduce((s, i) => s + Number(i.amount_zar || 0), 0);
+
+    if (sumEl) {
+      sumEl.innerHTML = `
+        <div class="card" style="padding:0.85rem;"><span class="badge badge-teal">COLLECTED (ZAR)</span><div style="font-family:var(--font-display);font-size:1.55rem;margin-top:0.3rem;">${window.STHS_AUTH.formatZar(totalPaidZar)}</div></div>
+        <div class="card" style="padding:0.85rem;"><span class="badge badge-success">PAID DELEGATES</span><div style="font-family:var(--font-display);font-size:1.55rem;margin-top:0.3rem;">${paidInvs.length}</div></div>
+        <div class="card" style="padding:0.85rem;"><span class="badge badge-terracotta">PoP TO VERIFY</span><div style="font-family:var(--font-display);font-size:1.55rem;margin-top:0.3rem;">${popInvs.length}</div></div>
+        <div class="card" style="padding:0.85rem;"><span class="badge badge-mustard">PRO-FORMA DUE</span><div style="font-family:var(--font-display);font-size:1.55rem;margin-top:0.3rem;">${window.STHS_AUTH.formatZar(totalPendingZar)}</div></div>
+      `;
+    }
+
+    if (listEl) {
+      const filter = state.adminInvoiceFilter || "ALL";
+      const rows = invs.filter((i) => filter === "ALL" || i.payment_status === filter);
+      if (!rows.length) {
+        listEl.innerHTML = `<div style="padding:1.1rem; text-align:center; color:var(--ink-muted); font-size:0.85rem;">No registration invoices match this filter yet.</div>`;
+      } else {
+        listEl.innerHTML = rows
+          .map(
+            (i) => `
+          <div style="border:2px solid ${i.payment_status === "pop_submitted" ? "#1d4ed8" : "#dfd3be"}; background:${i.payment_status === "pop_submitted" ? "#eff6ff" : "#fff"}; border-radius:14px; padding:0.85rem 1rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem;">
+            <div style="min-width:230px; flex:1;">
+              <div style="display:flex; align-items:center; gap:0.45rem; flex-wrap:wrap;">
+                <code style="font-weight:800; color:#003b5c;">${esc(i.invoice_number)}</code>
+                ${window.STHS_AUTH.paymentBadgeHtml(i.payment_status)}
+                <strong style="color:#003b5c;">${window.STHS_AUTH.formatZar(i.amount_zar)}</strong>
+              </div>
+              <div style="font-size:0.83rem; font-weight:700; margin-top:0.25rem;">${esc(i.billing_name || i.billing_email)} · ${esc(i.billing_organization || "")}</div>
+              <div style="font-size:0.77rem; color:var(--ink-muted);">
+                ${esc(i.billing_email)} · ${esc(i.tier_name)} · Method: <strong style="text-transform:uppercase;">${esc(i.payment_method)}</strong>
+                ${i.billing_vat_or_po ? ` · PO/VAT: <strong>${esc(i.billing_vat_or_po)}</strong>` : ""}
+                ${i.payment_reference ? ` · Ref: <code>${esc(i.payment_reference)}</code>` : ""}
+              </div>
+            </div>
+            <div style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
+              ${i.pop_file_url ? `<button type="button" class="btn btn-outline btn-sm" data-view-pop="${esc(i.pop_file_url)}">📎 View PoP</button>` : ""}
+              <button type="button" class="btn btn-outline btn-sm" data-print-admin-inv="${i.id}">🖨️ Invoice</button>
+              ${
+                i.payment_status !== "paid" && i.payment_status !== "complimentary"
+                  ? `<button type="button" class="btn btn-primary btn-sm" data-verify-inv-paid="${i.id}">✓ Confirm Paid &amp; Email Receipt</button>`
+                  : `<button type="button" class="btn btn-mustard btn-sm" data-resend-inv-receipt="${i.id}">✉️ Email Receipt</button>`
+              }
+            </div>
+          </div>
+        `
+          )
+          .join("");
+
+        listEl.querySelectorAll("[data-print-admin-inv]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const inv = state.adminInvoices.find((x) => x.id === btn.dataset.printAdminInv);
+            if (inv) window.STHS_AUTH.printInvoiceDocument(inv, state.adminBillingSettings);
+          });
+        });
+
+        listEl.querySelectorAll("[data-view-pop]").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const sb = window.STHS_DB.getClient();
+            const { data, error } = await sb.storage.from("event-submissions").createSignedUrl(btn.dataset.viewPop, 300);
+            if (error || !data?.signedUrl) {
+              window.STHS_DB.showToast(error?.message || "Could not open Proof of Payment file.", "⚠️");
+              return;
+            }
+            window.open(data.signedUrl, "_blank", "noopener");
+          });
+        });
+
+        listEl.querySelectorAll("[data-verify-inv-paid]").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const inv = state.adminInvoices.find((x) => x.id === btn.dataset.verifyInvPaid);
+            if (!inv) return;
+            const ref = window.prompt(`Enter bank / PayFast payment reference for ${inv.invoice_number} (optional):`, inv.payment_reference || inv.invoice_number);
+            if (ref === null) return;
+            const sb = window.STHS_DB.getClient();
+            const { data, error } = await sb.rpc("admin_verify_invoice_payment", {
+              p_invoice_id: inv.id,
+              p_new_status: "paid",
+              p_payment_ref: ref.trim() || inv.invoice_number,
+              p_admin_note: "Verified via Symposium Finance Console"
+            });
+            if (error || !data?.ok) {
+              window.STHS_DB.showToast(error?.message || data?.error || "Could not verify payment.", "⚠️");
+              return;
+            }
+            // Dispatch automated PAID Tax Invoice / Receipt from efundanathi@wits.ac.za
+            const emailRes = await sb.functions
+              .invoke("send-sths-email", {
+                body: { type: "payment_receipt", event_id: state.eventId, invoice_id: inv.id }
+              })
+              .catch(() => ({ data: null }));
+            window.STHS_DB.showToast(
+              emailRes?.data?.sent
+                ? `Invoice ${inv.invoice_number} marked PAID & official receipt emailed from efundanathi@wits.ac.za!`
+                : `Invoice ${inv.invoice_number} marked PAID! Delegate can download their official PAID Tax Invoice immediately.`,
+              "✅"
+            );
+            await loadAllLiveData();
+          });
+        });
+
+        listEl.querySelectorAll("[data-resend-inv-receipt]").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const sb = window.STHS_DB.getClient();
+            const { data, error } = await sb.functions.invoke("send-sths-email", {
+              body: { type: "payment_receipt", event_id: state.eventId, invoice_id: btn.dataset.resendInvReceipt }
+            });
+            if (error) window.STHS_DB.showToast(error.message, "⚠️");
+            else if (data?.sent) window.STHS_DB.showToast(`Official PAID receipt emailed to ${data.to}!`, "✉️");
+            else window.STHS_DB.showToast("Configure Wits SMTP credentials in Edge Function Secrets to enable automated email dispatch.", "ℹ️");
+          });
+        });
+      }
+    }
+
+    if (tiersEl) {
+      tiersEl.innerHTML = (state.adminTicketTiers || [])
+        .map(
+          (t) => `
+        <div style="background:#fff; border:1px solid #e4d9c5; border-radius:10px; padding:0.65rem 0.75rem; display:flex; align-items:center; justify-content:space-between; gap:0.6rem; flex-wrap:wrap;">
+          <div style="flex:1; min-width:170px;">
+            <strong style="font-size:0.82rem; display:block;">${esc(t.name)}</strong>
+            <span style="font-size:0.73rem; color:var(--ink-muted);">${t.attendance_mode === "online" ? "Online" : "In-Person"} · ${t.requires_organizer_role ? "Committee/Reviewer Only" : "Public Tier"}</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:0.4rem;">
+            <span style="font-weight:800; font-size:0.82rem;">R</span>
+            <input type="number" min="0" step="10" class="input-field" data-tier-price-input="${t.id}" value="${Number(t.price_zar || 0)}" style="width:92px; padding:0.32rem 0.5rem; font-size:0.82rem;" />
+            <button type="button" class="btn btn-mustard btn-sm" data-save-tier-price="${t.id}">Save</button>
+          </div>
+        </div>
+      `
+        )
+        .join("");
+
+      tiersEl.querySelectorAll("[data-save-tier-price]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const id = btn.dataset.saveTierPrice;
+          const inp = tiersEl.querySelector(`[data-tier-price-input="${id}"]`);
+          const price = Math.max(0, Math.round(Number(inp?.value || 0)));
+          const sb = window.STHS_DB.getClient();
+          const { error } = await sb.from("event_ticket_tiers").update({ price_zar: price, is_complimentary: price === 0, updated_at: new Date().toISOString() }).eq("id", id);
+          if (error) window.STHS_DB.showToast(error.message, "⚠️");
+          else {
+            window.STHS_DB.showToast(`Ticket fee updated to ${window.STHS_AUTH.formatZar(price)}!`, "✅");
+            await window.STHS_AUTH.loadEventBillingData();
+            await loadAllLiveData();
+          }
+        });
+      });
+    }
+
+    const b = state.adminBillingSettings;
+    if (b) {
+      const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ""; };
+      setVal("admBillBankName", b.bank_name);
+      setVal("admBillAccountHolder", b.account_holder);
+      setVal("admBillAccountNumber", b.account_number);
+      setVal("admBillBranchCode", b.branch_code);
+      setVal("admBillCostCentre", b.cost_centre_reference);
+      setVal("admBillFinanceEmail", b.finance_contact_email);
+      setVal("admBillFinanceNote", b.finance_reference_note);
+      const pfEn = document.getElementById("admBillPayfastEnabled");
+      const pfSb = document.getElementById("admBillPayfastSandbox");
+      if (pfEn) pfEn.checked = Boolean(b.payfast_enabled);
+      if (pfSb) pfSb.checked = b.payfast_sandbox !== false;
+    }
   }
 
   function syncAdminStageFields() {
@@ -2404,6 +2597,46 @@
       else {
         document.getElementById("adminPollForm").reset();
         window.STHS_DB.showToast("New live audience poll published!", "📊");
+        await loadAllLiveData();
+      }
+    });
+
+    document.getElementById("heroInvoiceBtn")?.addEventListener("click", () => {
+      const auth = window.STHS_AUTH.getState();
+      if (auth.user) window.STHS_AUTH.openInvoiceModal();
+      else window.STHS_AUTH.openAuthModal("signup");
+    });
+
+    document.getElementById("exportInvoicesCsvBtn")?.addEventListener("click", () => {
+      downloadCsv("gameon-2027-invoices-finance.csv", state.adminInvoices || []);
+    });
+
+    document.getElementById("adminInvoiceStatusFilter")?.addEventListener("change", (e) => {
+      state.adminInvoiceFilter = e.target.value;
+      renderAdminFinancePanel();
+    });
+
+    document.getElementById("adminBillingSettingsForm")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (!state.eventId) return;
+      const sb = window.STHS_DB.getClient();
+      const { error } = await sb.from("event_billing_settings").upsert({
+        event_id: state.eventId,
+        bank_name: document.getElementById("admBillBankName").value.trim(),
+        account_holder: document.getElementById("admBillAccountHolder").value.trim(),
+        account_number: document.getElementById("admBillAccountNumber").value.trim(),
+        branch_code: document.getElementById("admBillBranchCode").value.trim(),
+        cost_centre_reference: document.getElementById("admBillCostCentre").value.trim(),
+        finance_contact_email: document.getElementById("admBillFinanceEmail").value.trim(),
+        finance_reference_note: document.getElementById("admBillFinanceNote").value.trim(),
+        payfast_enabled: document.getElementById("admBillPayfastEnabled").checked,
+        payfast_sandbox: document.getElementById("admBillPayfastSandbox").checked,
+        updated_at: new Date().toISOString()
+      });
+      if (error) window.STHS_DB.showToast(error.message, "⚠️");
+      else {
+        window.STHS_DB.showToast("Wits Banking & PayFast settings saved!", "✅");
+        await window.STHS_AUTH.loadEventBillingData();
         await loadAllLiveData();
       }
     });
