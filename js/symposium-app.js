@@ -15,6 +15,7 @@
     activeTrackFilter: "ALL",
     agendaSearch: "",
     activeUniFilter: "ALL",
+    activeDirectoryView: "speakers",
     speakerSearch: "",
     activeFolderFilter: "ALL",
     activeStageId: OFFICIAL.defaultStages[0].id,
@@ -586,32 +587,72 @@
   function renderDirectory() {
     const container = document.getElementById("speakersDirectoryContainer");
     const navCount = document.getElementById("navSpeakerCount");
+    const spkTabCount = document.getElementById("dirSpeakerTabCount");
+    const delTabCount = document.getElementById("dirDelegateTabCount");
     const unreadEl = document.getElementById("unreadMsgCount");
-    if (navCount) navCount.textContent = state.directory.length;
+
+    const confirmedSpeakers = state.directory.filter((p) => p.role === "speaker");
+    const registeredDelegates = state.directory.filter((p) => p.role !== "speaker");
+
+    // Nav badge strictly reflects Confirmed Speakers (not general delegates)
+    if (navCount) navCount.textContent = confirmedSpeakers.length;
+    if (spkTabCount) spkTabCount.textContent = confirmedSpeakers.length;
+    if (delTabCount) delTabCount.textContent = registeredDelegates.length;
+
+    document.querySelectorAll("#directoryViewToggle [data-dir-view]").forEach((btn) => {
+      const active = btn.dataset.dirView === state.activeDirectoryView;
+      btn.classList.toggle("btn-primary", active);
+      btn.classList.toggle("btn-outline", !active);
+    });
+
     const uid = window.STHS_AUTH.getState().user?.id;
     const unread = state.directMessages.filter((m) => m.recipient_id === uid && !m.is_read).length;
     if (unreadEl) unreadEl.textContent = unread;
     if (!container) return;
 
+    const pool = state.activeDirectoryView === "speakers" ? confirmedSpeakers : registeredDelegates;
     const q = state.speakerSearch.toLowerCase().trim();
-    const filtered = state.directory.filter((p) => {
+    const filtered = pool.filter((p) => {
       const uniOk = state.activeUniFilter === "ALL" || (p.university || "").toLowerCase().includes(state.activeUniFilter.toLowerCase());
       const qOk = !q || `${p.display_name} ${p.university} ${p.faculty_department} ${p.bio} ${(p.research_tags || []).join(" ")}`.toLowerCase().includes(q);
       return uniOk && qOk;
     });
 
     if (filtered.length === 0) {
-      container.innerHTML = `
-        <div class="empty-prod-card" style="grid-column:1/-1;">
-          <div style="font-size:2rem;">🎓</div>
-          <h4>${state.directory.length === 0 ? "Be the First Verified Speaker or Delegate in the Directory" : "No speakers or delegates match this filter"}</h4>
-          <p>Sign in with your university or work email to publish your bio, academic affiliation, research interests, and presentation slides.</p>
-          <button type="button" class="btn btn-accent btn-sm" id="emptyCreateBioBtn">✍️ Create My Speaker / Delegate Bio</button>
-        </div>
-      `;
-      document.getElementById("emptyCreateBioBtn")?.addEventListener("click", () => {
-        document.getElementById("toggleBioCreatorBtn")?.click();
-      });
+      if (state.activeDirectoryView === "speakers") {
+        container.innerHTML = `
+          <div class="empty-prod-card" style="grid-column:1/-1;">
+            <div style="font-size:2rem;">🎤</div>
+            <h4>${confirmedSpeakers.length === 0 ? "Confirmed Keynote &amp; Symposium Speakers Lineup Coming Soon" : "No speakers match this filter"}</h4>
+            <p>${
+              confirmedSpeakers.length === 0
+                ? "Official keynote speakers, panel chairs, and accepted presenters will be showcased here with full bios and portraits once published by the Organizing Committee. Registered attendees can be found under the Delegates &amp; Network tab."
+                : "Try clearing your search or selecting All Universities."
+            }</p>
+            <div style="display:flex; gap:0.55rem; justify-content:center; flex-wrap:wrap; margin-top:0.5rem;">
+              <button type="button" class="btn btn-primary btn-sm" id="switchToDelegatesViewBtn">👥 View Registered Delegates (${registeredDelegates.length})</button>
+              <button type="button" class="btn btn-accent btn-sm" data-goto-tab="abstracts">📤 Submit an Abstract</button>
+            </div>
+          </div>
+        `;
+        document.getElementById("switchToDelegatesViewBtn")?.addEventListener("click", () => {
+          state.activeDirectoryView = "delegates";
+          renderDirectory();
+        });
+        container.querySelectorAll("[data-goto-tab]").forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.gotoTab)));
+      } else {
+        container.innerHTML = `
+          <div class="empty-prod-card" style="grid-column:1/-1;">
+            <div style="font-size:2rem;">👥</div>
+            <h4>${registeredDelegates.length === 0 ? "Inter-University Delegate Directory" : "No delegates match this filter"}</h4>
+            <p>Sign in with your university or work email to appear in the Inter-University Network and connect with peers.</p>
+            <button type="button" class="btn btn-accent btn-sm" id="emptyCreateBioBtn">✍️ Update My Delegate Bio</button>
+          </div>
+        `;
+        document.getElementById("emptyCreateBioBtn")?.addEventListener("click", () => {
+          document.getElementById("toggleBioCreatorBtn")?.click();
+        });
+      }
       return;
     }
 
@@ -619,23 +660,24 @@
       .map((p) => {
         const initials = window.STHS_AUTH.initialsFrom(p.display_name, "U");
         const isSelf = p.user_id === uid;
+        const isSpk = p.role === "speaker";
         return `
           <article class="card" style="display:flex; flex-direction:column; gap:0.65rem;">
             <div style="display:flex; align-items:center; gap:0.8rem;">
               ${
                 p.avatar_url
-                  ? `<img src="${esc(p.avatar_url)}" alt="${esc(p.display_name)}" style="width:54px;height:54px;border-radius:50%;object-fit:cover;border:2px solid var(--ink-espresso);" />`
-                  : `<div style="width:54px;height:54px;border-radius:50%;background:var(--teal-primary);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;border:2px solid var(--ink-espresso);flex-shrink:0;">${esc(initials)}</div>`
+                  ? `<img src="${esc(p.avatar_url)}" alt="${esc(p.display_name)}" style="width:62px;height:62px;border-radius:50%;object-fit:cover;border:2px solid var(--ink-espresso);" />`
+                  : `<div style="width:62px;height:62px;border-radius:50%;background:${isSpk ? "var(--navy-dark)" : "var(--teal-primary)"};color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;border:2px solid var(--ink-espresso);flex-shrink:0;">${esc(initials)}</div>`
               }
               <div style="min-width:0;">
-                <span class="badge badge-mustard" style="text-transform:capitalize;">${esc(p.role)}</span>
+                <span class="badge ${isSpk ? "badge-terracotta" : "badge-mustard"}">${esc(window.STHS_AUTH.formatRoleLabel(p.role))}</span>
                 <h4 style="font-family:var(--font-display); font-size:1.05rem; margin:0.2rem 0 0;">${esc(p.display_name)}</h4>
                 <div style="font-size:0.78rem; color:var(--teal-dark); font-weight:700;">${esc(p.university)}</div>
               </div>
             </div>
             ${p.faculty_department ? `<div style="font-size:0.79rem; color:var(--ink-muted);">${esc(p.faculty_department)}</div>` : ""}
             ${p.session_title ? `<div style="font-size:0.82rem; font-weight:700; background:var(--bg-cream); padding:0.45rem 0.65rem; border-radius:8px;">🎤 ${esc(p.session_title)}</div>` : ""}
-            <p style="font-size:0.84rem; color:var(--ink-brown); margin:0; flex:1;">${esc(p.bio || "Registered symposium participant.")}</p>
+            <p style="font-size:0.84rem; color:var(--ink-brown); margin:0; flex:1;">${esc(p.bio || (isSpk ? "Confirmed GO Game-On! Symposium 2027 Speaker." : "Registered symposium delegate."))}</p>
             ${
               (p.research_tags || []).length
                 ? `<div style="display:flex; gap:0.35rem; flex-wrap:wrap;">${p.research_tags
@@ -1482,6 +1524,7 @@
                         .map(([val, lbl]) => `<option value="${val}" ${(u.platform_role === "super_admin" ? "super_admin" : u.event_role) === val ? "selected" : ""}>${lbl}</option>`)
                         .join("")}
                     </select>
+                    <button type="button" class="btn btn-outline btn-sm" data-edit-speaker-user="${u.user_id}">🎤 Speaker Profile &amp; Photo</button>
                     <button type="button" class="btn btn-mustard btn-sm" data-save-user-role="${u.user_id}">Update Role</button>
                   `
               }
@@ -1532,6 +1575,42 @@
         applyAccessChange(uid, chosen, "approved", "Updated via User Access Manager");
       });
     });
+
+    box.querySelectorAll("[data-edit-speaker-user]").forEach((btn) => {
+      btn.addEventListener("click", () => openAdminSpeakerModal(btn.dataset.editSpeakerUser));
+    });
+  }
+
+  async function openAdminSpeakerModal(targetUserId) {
+    const u = state.adminUsers.find((x) => x.user_id === targetUserId);
+    if (!u) return;
+    const sb = window.STHS_DB.getClient();
+    const [{ data: prof }, { data: reg }] = await Promise.all([
+      sb.from("profiles").select("*").eq("id", targetUserId).maybeSingle(),
+      sb.from("event_registrations").select("*").eq("event_id", state.eventId).eq("user_id", targetUserId).maybeSingle()
+    ]);
+
+    document.getElementById("admSpkUserId").value = targetUserId;
+    document.getElementById("adminSpeakerModalSub").textContent = `Editing profile for ${u.email}`;
+    document.getElementById("admSpkTitle").value = prof?.academic_title || "";
+    document.getElementById("admSpkName").value = prof?.full_name || u.display_name || "";
+    document.getElementById("admSpkUni").value = prof?.university || u.university || "University of the Witwatersrand (Wits)";
+    document.getElementById("admSpkDept").value = prof?.faculty_department || u.faculty_department || "";
+    document.getElementById("admSpkTrack").value = reg?.primary_track || "TRACK 1";
+    document.getElementById("admSpkSessionTitle").value = reg?.session_title || "";
+    document.getElementById("admSpkBio").value = prof?.bio || "";
+    document.getElementById("admSpkTags").value = (prof?.research_tags || []).join(", ");
+    document.getElementById("admSpkPromoteRole").checked = true;
+    const photoInp = document.getElementById("admSpkPhotoFile");
+    if (photoInp) photoInp.value = "";
+
+    const preview = document.getElementById("admSpkAvatarPreview");
+    if (preview) {
+      preview.innerHTML = prof?.avatar_url
+        ? `<img src="${esc(prof.avatar_url)}" alt="Speaker photo" style="width:100%;height:100%;object-fit:cover;" />`
+        : esc(window.STHS_AUTH.initialsFrom(prof?.full_name || u.display_name, u.email));
+    }
+    document.getElementById("adminSpeakerModal")?.classList.add("open");
   }
 
   function renderAdminAuditLog() {
@@ -2598,6 +2677,65 @@
         document.getElementById("adminPollForm").reset();
         window.STHS_DB.showToast("New live audience poll published!", "📊");
         await loadAllLiveData();
+      }
+    });
+
+    document.querySelectorAll("#directoryViewToggle [data-dir-view]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        state.activeDirectoryView = btn.dataset.dirView;
+        renderDirectory();
+      });
+    });
+
+    document.getElementById("admSpkPhotoFile")?.addEventListener("change", (e) => {
+      const file = e.target.files?.[0];
+      const preview = document.getElementById("admSpkAvatarPreview");
+      if (file && preview) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          preview.innerHTML = `<img src="${reader.result}" alt="Preview" style="width:100%;height:100%;object-fit:cover;" />`;
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    document.getElementById("adminSpeakerForm")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const sb = window.STHS_DB.getClient();
+      const btn = document.getElementById("admSpkSaveBtn");
+      if (btn) { btn.disabled = true; btn.textContent = "Uploading & Saving…"; }
+      try {
+        const targetId = document.getElementById("admSpkUserId").value;
+        let avatarUrl = "";
+        const photoFile = document.getElementById("admSpkPhotoFile")?.files?.[0];
+        if (photoFile) {
+          const up = await uploadToEventStorage(photoFile, "event-public", "03_Speaker_&_Participant_Bios_&_Photos");
+          avatarUrl = up.url;
+        }
+        const tags = document.getElementById("admSpkTags").value.split(",").map((t) => t.trim()).filter(Boolean);
+        const { data, error } = await sb.rpc("admin_upsert_speaker_profile", {
+          p_event_id: state.eventId,
+          p_target_user_id: targetId,
+          p_academic_title: document.getElementById("admSpkTitle").value.trim(),
+          p_full_name: document.getElementById("admSpkName").value.trim(),
+          p_university: document.getElementById("admSpkUni").value.trim(),
+          p_faculty_department: document.getElementById("admSpkDept").value.trim(),
+          p_bio: document.getElementById("admSpkBio").value.trim(),
+          p_research_tags: tags,
+          p_avatar_url: avatarUrl,
+          p_session_title: document.getElementById("admSpkSessionTitle").value.trim(),
+          p_primary_track: document.getElementById("admSpkTrack").value,
+          p_set_speaker_role: document.getElementById("admSpkPromoteRole").checked,
+          p_public_in_directory: true
+        });
+        if (error || !data?.ok) throw new Error(error?.message || data?.error || "Could not save speaker profile.");
+        document.getElementById("adminSpeakerModal")?.classList.remove("open");
+        window.STHS_DB.showToast("Speaker profile & photo published!", "🎤");
+        await loadAllLiveData();
+      } catch (err) {
+        window.STHS_DB.showToast(err.message, "⚠️");
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "💾 Save & Publish Speaker Profile"; }
       }
     });
 

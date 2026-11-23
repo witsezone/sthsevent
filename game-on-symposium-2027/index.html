@@ -95,8 +95,8 @@
          ====================================================== -->
     <section class="tab-panel active" id="tab-overview">
       <div class="hero-card">
-        <div style="width:100%; display:flex; flex-direction:column; align-items:center; text-align:center; margin:0 auto 1.65rem;">
-          <img src="./assets/game-on-logo.svg" alt="GO Game-On! Symposium 2027" style="display:block; margin:0 auto 1rem; max-width:540px; width:100%; height:auto;" />
+        <div class="hero-brand-head">
+          <img src="./assets/game-on-logo.svg" alt="GO Game-On! Symposium 2027" class="hero-brand-logo" />
           <div class="save-date-kicker">
             <span>✨ SAVE THE DATE &amp; CALL FOR ABSTRACTS</span>
             <span>·</span>
@@ -105,7 +105,7 @@
         </div>
 
         <div class="hero-grid">
-          <div>
+          <div class="hero-left-col">
             <div class="hero-theme-box">
               <div class="hero-theme-label">Official 2027 Symposium Theme</div>
               <h1 class="hero-theme-title">
@@ -121,18 +121,6 @@
               <span class="info-chip">🌐 Hybrid: On-Ground + Zoom &amp; MS Teams</span>
               <span class="info-chip">📱 Installable App · Live Q&amp;A &amp; Session Docs</span>
             </div>
-
-            <!-- Adaptive On-Ground vs Online Companion Strip -->
-            <div id="hybridCompanionStrip" class="card" style="padding:0.9rem 1.05rem; margin-bottom:1.1rem; background:var(--teal-soft); border-color:var(--teal-primary); box-shadow:none;"></div>
-
-            <div class="hero-cta-row">
-              <button type="button" class="btn btn-primary" id="heroRegisterBtn">🎟️ Register / Sign In</button>
-              <button type="button" class="btn btn-mustard" id="heroInvoiceBtn">🧾 Fees, Pay &amp; Invoice</button>
-              <button type="button" class="btn btn-accent" data-goto-tab="abstracts">📤 Submit Abstract</button>
-              <button type="button" class="btn btn-outline" data-goto-tab="sponsors">📖 Sponsorship Prospectus</button>
-              <button type="button" class="btn btn-outline" data-goto-tab="stream">📡 Hybrid Live Stage</button>
-              <button type="button" class="btn btn-outline" data-goto-tab="gamification">🏁 Amazing Race</button>
-            </div>
           </div>
 
           <div class="hero-visual-col">
@@ -145,6 +133,19 @@
               <div class="countdown-cell"><div class="countdown-num" id="cdSecs">--</div><div class="countdown-lbl">Secs</div></div>
             </div>
           </div>
+        </div>
+
+        <!-- Full-Width Adaptive On-Ground vs Online Companion Strip -->
+        <div id="hybridCompanionStrip" class="card hero-full-companion" style="padding:0.9rem 1.2rem; background:var(--teal-soft); border-color:var(--teal-primary); box-shadow:none;"></div>
+
+        <!-- Single Neat Full-Width Action Row -->
+        <div class="hero-cta-row">
+          <button type="button" class="btn btn-primary" id="heroRegisterBtn">🎟️ Register / Sign In</button>
+          <button type="button" class="btn btn-mustard" id="heroInvoiceBtn">🧾 Fees, Pay &amp; Invoice</button>
+          <button type="button" class="btn btn-accent" data-goto-tab="abstracts">📤 Submit Abstract</button>
+          <button type="button" class="btn btn-outline" data-goto-tab="sponsors">📖 Sponsorship Prospectus</button>
+          <button type="button" class="btn btn-outline" data-goto-tab="stream">📡 Hybrid Live Stage</button>
+          <button type="button" class="btn btn-outline" data-goto-tab="gamification">🏁 Amazing Race</button>
         </div>
 
         <div class="host-banner-wrap">
@@ -309,13 +310,18 @@
     <section class="tab-panel" id="tab-speakers">
       <div class="section-header">
         <div>
-          <h2 class="section-title">🎓 Speakers, Presenters &amp; Inter-University Directory</h2>
-          <p class="section-subtitle">Discover registered speakers and delegates from Wits, UCT, UP, UJ, Stellenbosch, UKZN &amp; partner universities, upload your bio &amp; deck, and message peers directly.</p>
+          <h2 class="section-title">🎤 Symposium Speakers &amp; Delegate Network</h2>
+          <p class="section-subtitle">Explore confirmed keynote speakers &amp; invited presenters curated by the Organizing Committee, or connect with registered delegates across universities.</p>
         </div>
         <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
           <button type="button" class="btn btn-outline btn-sm" id="openInboxModalBtn">💬 My Messages (<span id="unreadMsgCount">0</span>)</button>
-          <button type="button" class="btn btn-accent btn-sm" id="toggleBioCreatorBtn">✍️ Edit My Bio &amp; Upload Presentation</button>
+          <button type="button" class="btn btn-accent btn-sm" id="toggleBioCreatorBtn">✍️ Edit My Delegate Bio</button>
         </div>
+      </div>
+
+      <div style="display:flex; gap:0.6rem; flex-wrap:wrap; margin-bottom:1.1rem;" id="directoryViewToggle">
+        <button type="button" class="btn btn-primary btn-sm" data-dir-view="speakers">🎤 Confirmed Speakers (<span id="dirSpeakerTabCount">0</span>)</button>
+        <button type="button" class="btn btn-outline btn-sm" data-dir-view="delegates">👥 Registered Delegates &amp; Network (<span id="dirDelegateTabCount">0</span>)</button>
       </div>
 
       <!-- Speaker & Participant Bio Studio (Persisted to Supabase profiles + Storage) -->
@@ -1217,6 +1223,77 @@
           <textarea id="newSessDesc" class="sths-textarea" rows="3" required></textarea>
         </div>
         <button type="submit" class="sths-btn sths-btn-primary">💾 Publish Session</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="sths-modal-backdrop" id="adminSpeakerModal">
+    <div class="sths-modal wide">
+      <div class="sths-modal-header">
+        <div>
+          <h3 class="sths-modal-title">🎤 Speaker Profile &amp; Headshot Manager</h3>
+          <p class="sths-modal-subtitle" id="adminSpeakerModalSub">Promote this user to a Confirmed Speaker, upload their portrait photo, and publish their talk details.</p>
+        </div>
+        <button type="button" class="sths-modal-close" data-close-symp-modal="adminSpeakerModal">✕</button>
+      </div>
+      <form id="adminSpeakerForm" style="display:flex; flex-direction:column; gap:0.85rem;">
+        <input type="hidden" id="admSpkUserId" />
+        <div style="display:flex; align-items:center; gap:1rem; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:0.85rem;">
+          <div id="admSpkAvatarPreview" style="width:64px; height:64px; border-radius:50%; background:var(--teal-primary); color:#fff; font-weight:800; display:flex; align-items:center; justify-content:center; border:2px solid var(--ink-espresso); overflow:hidden; flex-shrink:0;">SP</div>
+          <div style="flex:1;">
+            <label class="sths-label" for="admSpkPhotoFile" style="display:block; margin-bottom:0.25rem;">Upload Official Speaker Portrait (PNG / JPG / WEBP)</label>
+            <input type="file" id="admSpkPhotoFile" class="sths-input" accept="image/png,image/jpeg,image/webp" />
+          </div>
+        </div>
+        <div class="sths-form-row-title">
+          <div class="sths-form-group" style="margin-bottom:0;">
+            <label class="sths-label" for="admSpkTitle">Title</label>
+            <input type="text" id="admSpkTitle" class="sths-input" placeholder="Prof. / Dr." />
+          </div>
+          <div class="sths-form-group" style="margin-bottom:0;">
+            <label class="sths-label" for="admSpkName">Full Name *</label>
+            <input type="text" id="admSpkName" class="sths-input" required />
+          </div>
+        </div>
+        <div class="sths-form-row">
+          <div class="sths-form-group" style="margin-bottom:0;">
+            <label class="sths-label" for="admSpkUni">University / Institution *</label>
+            <input type="text" id="admSpkUni" class="sths-input" required />
+          </div>
+          <div class="sths-form-group" style="margin-bottom:0;">
+            <label class="sths-label" for="admSpkDept">School / Department</label>
+            <input type="text" id="admSpkDept" class="sths-input" />
+          </div>
+        </div>
+        <div class="sths-form-row">
+          <div class="sths-form-group" style="margin-bottom:0;">
+            <label class="sths-label" for="admSpkTrack">Primary Track</label>
+            <select id="admSpkTrack" class="sths-select">
+              <option value="Plenary">Plenary / Keynote</option>
+              <option value="TRACK 1">Track 1: Educational Games &amp; Playful Pedagogies</option>
+              <option value="TRACK 2">Track 2: Simulation, Immersive Tech &amp; AI</option>
+              <option value="TRACK 3">Track 3: Games, Health &amp; Society</option>
+              <option value="TRACK 4">Track 4: Research, Innovation &amp; Partnerships</option>
+            </select>
+          </div>
+          <div class="sths-form-group" style="margin-bottom:0;">
+            <label class="sths-label" for="admSpkSessionTitle">Keynote / Talk Title</label>
+            <input type="text" id="admSpkSessionTitle" class="sths-input" placeholder="e.g. Serious Games in Therapeutic Sciences" />
+          </div>
+        </div>
+        <div class="sths-form-group" style="margin-bottom:0;">
+          <label class="sths-label" for="admSpkBio">Speaker Biography *</label>
+          <textarea id="admSpkBio" class="sths-textarea" rows="3" placeholder="Enter speaker biography and academic highlights..." required></textarea>
+        </div>
+        <div class="sths-form-group" style="margin-bottom:0;">
+          <label class="sths-label" for="admSpkTags">Expertise Tags (comma-separated)</label>
+          <input type="text" id="admSpkTags" class="sths-input" placeholder="Indigenous Games, Clinical Simulation, XR" />
+        </div>
+        <label style="display:flex; align-items:center; gap:0.5rem; font-size:0.84rem; font-weight:700; cursor:pointer; background:#f0fdfa; border:1px solid #99f6e4; border-radius:10px; padding:0.65rem 0.85rem;">
+          <input type="checkbox" id="admSpkPromoteRole" checked />
+          <span>Publish under <strong>Confirmed Speakers</strong> showcase (assigns <code>speaker</code> role)</span>
+        </label>
+        <button type="submit" class="sths-btn sths-btn-primary" id="admSpkSaveBtn">💾 Save &amp; Publish Speaker Profile</button>
       </form>
     </div>
   </div>

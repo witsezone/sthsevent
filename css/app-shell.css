@@ -358,11 +358,13 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.85rem;
+  align-items: end;
 }
 .sths-form-row-title {
   display: grid;
   grid-template-columns: 120px 1fr;
   gap: 0.85rem;
+  align-items: end;
 }
 @media (max-width: 580px) {
   .sths-form-row,

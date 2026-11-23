@@ -1,0 +1,5 @@
+-- Local mirror of applied Supabase migration 0005_admin_speaker_manager
+-- Applied to project ryabexxorzpsuvdfxzyo (sths-eventhub) on 2026-11-23
+-- Adds public.admin_upsert_speaker_profile RPC so approved Super Admins and
+-- Planning Committee organizers can promote delegates to Confirmed Speakers
+-- and upload/curate their official bio, talk details, and headshot photo.

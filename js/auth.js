@@ -209,9 +209,9 @@
       const pfOn = Boolean(state.billingSettings?.payfast_enabled);
       const prevPay = paySel.value;
       paySel.innerHTML = [
-        pfOn ? `<option value="payfast">PayFast Online (Card / Instant EFT · ZAR)</option>` : "",
-        `<option value="eft">Institutional / Direct Bank EFT (FNB · Upload Proof of Payment)</option>`,
-        `<option value="purchase_order">University Purchase Order (PO) / Internal Transfer (Upload PO)</option>`
+        pfOn ? `<option value="payfast">PayFast Online (Card / Instant EFT)</option>` : "",
+        `<option value="eft">FNB Bank EFT (Upload PoP)</option>`,
+        `<option value="purchase_order">University Purchase Order (PO)</option>`
       ].filter(Boolean).join("");
       if (prevPay && Array.from(paySel.options).some((o) => o.value === prevPay)) {
         paySel.value = prevPay;
@@ -362,7 +362,6 @@
       <optgroup label="Instant Registration Access">
         <option value="delegate">Delegate / Academic &amp; Clinical Participant</option>
         <option value="student">Student / Emerging Scholar</option>
-        <option value="speaker">Speaker / Presenter / Game Demo Exhibitor</option>
       </optgroup>
       <optgroup label="Restricted Access (Requires Admin Approval)">
         <option value="planning_committee">Planning &amp; Organizing Committee (Approval Required)</option>
@@ -506,17 +505,17 @@
                 </div>
                 <div class="sths-form-row">
                   <div class="sths-form-group">
-                    <label class="sths-label" for="authSignUpNeedInvoice">Do you need an invoice to provide payment? *</label>
+                    <label class="sths-label" for="authSignUpNeedInvoice">Need an Invoice for Payment? *</label>
                     <select id="authSignUpNeedInvoice" class="sths-select">
-                      <option value="yes">Yes — generate a Pro-Forma Tax Invoice</option>
-                      <option value="no">No — I will pay directly via Wits FNB EFT</option>
+                      <option value="yes">Yes — Pro-Forma Tax Invoice</option>
+                      <option value="no">No — Direct Wits FNB EFT</option>
                     </select>
                   </div>
                   <div class="sths-form-group">
                     <label class="sths-label" for="authSignUpPaymentMethod">Payment Method *</label>
                     <select id="authSignUpPaymentMethod" class="sths-select">
-                      <option value="eft">Institutional / Direct Bank EFT (FNB · Upload PoP)</option>
-                      <option value="purchase_order">University Purchase Order (PO) / Internal Transfer</option>
+                      <option value="eft">FNB Bank EFT (Upload PoP)</option>
+                      <option value="purchase_order">University Purchase Order (PO)</option>
                     </select>
                   </div>
                 </div>
