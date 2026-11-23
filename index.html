@@ -66,6 +66,7 @@
 
       <div class="hub-header-actions">
         <button type="button" class="sths-btn sths-btn-outline sths-btn-sm" data-install-app-trigger style="display:none;">📲 Install App</button>
+        <button type="button" class="sths-btn sths-btn-outline sths-btn-sm" id="hubAccessAdminBtn" style="display:none;">🔐 User Access</button>
         <button type="button" class="sths-btn sths-btn-outline sths-btn-sm" id="hubCreateEventBtn" style="display:none;">+ Publish Event</button>
         <button type="button" class="hub-user-pill" id="hubAccountBtn">
           <span class="hub-user-avatar" id="hubUserInitials">→</span>
@@ -114,7 +115,7 @@
                 <span></span><span></span><span></span>
               </div>
               <div class="hub-window-url">witsezone.github.io/sthsevent/game-on-symposium-2027</div>
-              <div style="font-weight:700; color:var(--sths-teal-dark);">PWA · Hybrid Zoom &amp; MS Teams Ready</div>
+              <div style="font-weight:700; color:var(--sths-teal-dark);">Hybrid Conference App · Zoom &amp; MS Teams Ready</div>
             </div>
 
             <div class="hub-flagship-grid">
@@ -264,8 +265,8 @@
             <div class="hub-section-kicker">One Unified University Event Platform</div>
             <h2 class="hub-section-title">Engineered for <em>hybrid</em> academic excellence</h2>
             <p class="hub-section-sub">
-              Combining the cleanest workflows of EventsAir, Whova, EasyChair, and Cvent — built specifically for
-              Wits School of Therapeutic Sciences with Supabase Auth, Storage, and Realtime.
+              An all-in-one academic conference and engagement platform crafted specifically for the
+              Wits School of Therapeutic Sciences — with secure university accounts, cloud document vaults, and live hybrid interaction.
             </p>
           </div>
         </div>
@@ -408,9 +409,7 @@
 
     <div class="hub-footer-bottom">
       <span>Copyright &copy; 2026 University of the Witwatersrand — School of Therapeutic Sciences. All rights reserved.</span>
-      <button type="button" id="hubSupabaseStatusBtn" style="background:none;border:none;color:#9bb5c7;font-size:0.78rem;cursor:pointer;text-decoration:underline;">
-        Platform Backend Status
-      </button>
+      <a href="https://www.wits.ac.za/therapeuticsciences/" target="_blank" rel="noopener" style="color:#9bb5c7; font-size:0.78rem;">Wits Therapeutic Sciences Portal ↗</a>
     </div>
   </footer>
 
@@ -515,6 +514,20 @@
           <button type="submit" class="sths-btn sths-btn-primary">Publish to STHS EventHub</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Super Admin / Planning Committee Platform User Access Modal -->
+  <div class="sths-modal-backdrop" id="hubUserAccessModal">
+    <div class="sths-modal wide" role="dialog" aria-modal="true" aria-labelledby="hubAccessTitle">
+      <div class="sths-modal-header">
+        <div>
+          <h3 id="hubAccessTitle" class="sths-modal-title">🔐 Platform User Access &amp; Approvals</h3>
+          <p class="sths-modal-subtitle">Approve committee, reviewer, partner, and administrator access across STHS EventHub.</p>
+        </div>
+        <button type="button" class="sths-modal-close" data-close-hub-modal="hubUserAccessModal" aria-label="Close">✕</button>
+      </div>
+      <div id="hubAccessListContainer" style="display:flex; flex-direction:column; gap:0.65rem; max-height:60vh; overflow-y:auto;"></div>
     </div>
   </div>
 

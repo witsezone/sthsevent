@@ -72,7 +72,7 @@
         <button type="button" class="nav-tab" data-tab="stream">📡 Live <span class="nav-badge" style="background:#ef4444;color:#fff;">HYBRID</span></button>
         <button type="button" class="nav-tab" data-tab="gamification">🏆 Race &amp; Hunt</button>
         <button type="button" class="nav-tab" data-tab="sponsors">🤝 Sponsors</button>
-        <button type="button" class="nav-tab" data-tab="admin" id="navAdminTabBtn" style="display:none;">🛠️ Admin</button>
+        <button type="button" class="nav-tab" data-tab="admin" id="navAdminTabBtn" style="display:none;">🛠️ Admin <span class="nav-badge" id="navPendingApprovalsBadge" style="display:none;background:#c93b3b;color:#fff;">0</span></button>
       </nav>
 
       <div class="header-user-cluster">
@@ -219,7 +219,7 @@
           <span class="badge badge-teal" style="margin-bottom:0.5rem;">HYBRID CONFERENCE EXCELLENCE</span>
           <h3 style="font-family:var(--font-display); font-size:1.3rem; margin:0 0 0.6rem;">One Seamless Experience — On-Ground &amp; Online</h3>
           <p style="font-size:0.86rem; color:var(--ink-muted); margin:0 0 0.9rem;">
-            Built as a native-feeling web conference app powered by Supabase so delegates joining in Parktown or online share equal access:
+            Built as an all-in-one hybrid conference platform so delegates joining in Parktown or online share equal access:
           </p>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.7rem; font-size:0.82rem;">
             <div style="padding:0.65rem; background:var(--bg-cream); border-radius:10px; border:1.5px solid var(--ink-espresso);">
@@ -321,7 +321,7 @@
       <div class="card" id="bioCreatorCard" style="display:none; margin-bottom:1.5rem; background:#fff9ea;">
         <h3 style="font-family:var(--font-display); font-size:1.25rem; margin:0 0 0.35rem;">Speaker &amp; Participant Profile Studio</h3>
         <p style="font-size:0.84rem; color:var(--ink-muted); margin:0 0 1rem;">
-          Publish your verified academic bio, research interests, portrait photo, and presentation slides directly to Supabase Cloud Storage.
+          Publish your verified academic bio, research interests, portrait photo, and presentation slides directly to the Symposium Directory &amp; Resource Vault.
         </p>
         <form id="speakerBioForm" class="grid-2">
           <div>
@@ -399,7 +399,7 @@
       <div class="section-header">
         <div>
           <h2 class="section-title">📄 Call for Abstracts, Presentations &amp; Resource Vault</h2>
-          <p class="section-subtitle">Submit abstracts &amp; playable game builds directly to Supabase Storage (with optional Google Drive folder mirroring) and track live peer-review decisions.</p>
+          <p class="section-subtitle">Submit abstracts, slide decks, and playable game builds directly to our secure Symposium Cloud Vault and track live peer-review decisions.</p>
         </div>
         <button type="button" class="btn btn-outline btn-sm" data-goto-tab="review">⚖️ Scientific Peer Review →</button>
       </div>
@@ -407,7 +407,7 @@
       <div class="grid-2">
         <!-- Submission Form -->
         <div class="card">
-          <span class="badge badge-teal" style="margin-bottom:0.45rem;">NEW SUBMISSION · SUPABASE CLOUD STORAGE</span>
+          <span class="badge badge-teal" style="margin-bottom:0.45rem;">NEW SUBMISSION · SYMPOSIUM CLOUD VAULT</span>
           <h3 style="font-family:var(--font-display); font-size:1.3rem; margin:0 0 0.85rem;">Submit Abstract, Slides or Game Build</h3>
           <form id="abstractSubmissionForm" style="display:flex; flex-direction:column; gap:0.8rem;">
             <div>
@@ -719,7 +719,7 @@
         <div class="card">
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.65rem;">
             <div>
-              <span class="badge badge-mustard">LIVE SUPABASE STANDINGS</span>
+              <span class="badge badge-mustard">LIVE SYMPOSIUM STANDINGS</span>
               <h3 style="font-family:var(--font-display); font-size:1.28rem; margin:0.3rem 0 0;">🏛️ Live Leaderboards</h3>
             </div>
             <div class="filter-group">
@@ -871,18 +871,29 @@
           </form>
         </div>
       </div>
+      <!-- Sponsor Partner Desk: Opt-In Booth Leads (Visible to Approved Sponsors & Organizers) -->
+      <div class="card" id="sponsorPartnerLeadsPanel" style="display:none; margin-top:1.5rem; background:#f0fafa; border-color:var(--teal-primary);">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; margin-bottom:0.85rem;">
+          <div>
+            <span class="badge badge-teal">SPONSOR PARTNER DESK</span>
+            <h3 style="font-family:var(--font-display); font-size:1.3rem; margin:0.25rem 0 0;">🤝 Opt-In Delegate Leads Captured at Your Booth</h3>
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" id="exportSponsorLeadsCsvBtn">📥 Export Leads CSV</button>
+        </div>
+        <div id="sponsorLeadsListContainer" style="display:flex; flex-direction:column; gap:0.55rem;"></div>
+      </div>
     </section>
 
     <!-- ======================================================
-         TAB 9: ORGANIZER COMMAND CENTER (ADMIN ROLE ONLY)
+         TAB 9: SUPER ADMIN, PLANNING COMMITTEE & VOLUNTEER DESK
          ====================================================== -->
     <section class="tab-panel" id="tab-admin">
       <div class="section-header">
         <div>
-          <h2 class="section-title">🛠️ Organizer &amp; Scientific Committee Command Center</h2>
-          <p class="section-subtitle">Manage live agenda sessions, Zoom &amp; MS Teams stream embeds, polls, sponsor leads, and CSV exports.</p>
+          <h2 class="section-title">🛠️ Symposium Management &amp; Access Control</h2>
+          <p class="section-subtitle" id="adminRoleSubtitle">Approve committee members, reviewers, sponsors &amp; administrators, manage live Zoom/MS Teams stages, and check in delegates.</p>
         </div>
-        <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
+        <div style="display:flex; gap:0.6rem; flex-wrap:wrap;" id="adminExportCluster">
           <button type="button" class="btn btn-mustard btn-sm" id="exportRegsCsvBtn">📥 Export Registrations CSV</button>
           <button type="button" class="btn btn-primary btn-sm" id="exportAbsCsvBtn">📥 Export Abstracts CSV</button>
         </div>
@@ -890,7 +901,57 @@
 
       <div class="grid-4" id="adminMetricsGrid" style="margin-bottom:1.5rem;"></div>
 
-      <div class="grid-2">
+      <!-- On-Ground QR Badge Check-In Desk (Visible to Volunteers, Planning Committee & Super Admin) -->
+      <div class="card" id="volunteerCheckinDeskCard" style="margin-bottom:1.5rem; background:var(--teal-soft); border-color:var(--teal-primary);">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; margin-bottom:0.75rem;">
+          <div>
+            <span class="badge badge-teal">ON-GROUND REGISTRATION DESK · EFUNDANATHI EZONE</span>
+            <h3 style="font-family:var(--font-display); font-size:1.25rem; margin:0.25rem 0 0;">▣ Delegate Pass Check-In Verification</h3>
+          </div>
+        </div>
+        <form id="volunteerCheckinForm" style="display:flex; gap:0.55rem; flex-wrap:wrap;">
+          <input type="text" id="volunteerBadgeInput" class="input-field" style="flex:1; min-width:220px; text-transform:uppercase;" placeholder="Enter or scan Pass ID (e.g., STHS-A1B2C3D4)" required />
+          <button type="submit" class="btn btn-primary btn-sm">✅ Verify &amp; Check In Delegate</button>
+        </form>
+        <div id="volunteerCheckinResult" style="margin-top:0.75rem;"></div>
+      </div>
+
+      <!-- User Access, Role Approvals & Super Admin Governance (Planning Committee & Super Admin) -->
+      <div class="card" id="adminUserAccessCard" style="margin-bottom:1.5rem;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:0.85rem; margin-bottom:1rem;">
+          <div>
+            <span class="badge badge-terracotta">ROLE GOVERNANCE &amp; APPROVALS</span>
+            <h3 style="font-family:var(--font-display); font-size:1.35rem; margin:0.3rem 0 0.2rem;">🔐 User Access, Role Approvals &amp; Permissions</h3>
+            <p style="font-size:0.83rem; color:var(--ink-muted); margin:0;" id="adminRbacPolicyHint">
+              Approve pending Planning Committee, Peer Reviewer, Sponsor, Session Chair, Volunteer &amp; Super Admin requests, or update any user's access level.
+            </p>
+          </div>
+          <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+            <select id="adminUserRoleFilter" class="select-field" style="font-size:0.82rem;">
+              <option value="ALL">All Users</option>
+              <option value="PENDING">⏳ Pending Approvals Only</option>
+              <option value="super_admin">Super Admins</option>
+              <option value="planning_committee">Planning Committee</option>
+              <option value="reviewer">Peer Reviewers</option>
+              <option value="sponsor">Sponsors / Exhibitors</option>
+              <option value="session_chair">Session Chairs</option>
+              <option value="volunteer">Check-In Volunteers</option>
+              <option value="speaker">Speakers / Presenters</option>
+              <option value="delegate">Delegates &amp; Students</option>
+            </select>
+            <input type="search" id="adminUserSearchInput" class="input-field" style="width:210px; font-size:0.82rem;" placeholder="Search name, email, uni..." />
+          </div>
+        </div>
+
+        <div id="adminUsersListContainer" style="display:flex; flex-direction:column; gap:0.65rem; max-height:460px; overflow-y:auto;"></div>
+
+        <details style="margin-top:1rem; background:var(--bg-cream); border:1.5px solid #dfd3be; border-radius:12px; padding:0.75rem;">
+          <summary style="cursor:pointer; font-weight:800; font-size:0.84rem; color:var(--ink-espresso);">📋 View Recent Access &amp; Role Change Audit Log</summary>
+          <div id="adminAuditLogList" style="display:flex; flex-direction:column; gap:0.45rem; margin-top:0.75rem; max-height:220px; overflow-y:auto;"></div>
+        </details>
+      </div>
+
+      <div class="grid-2" id="adminBroadcastAndPollsGrid">
         <div class="card">
           <h3 style="font-family:var(--font-display); font-size:1.25rem; margin:0 0 0.75rem;">📡 Configure Zoom / MS Teams Live Stage</h3>
           <form id="adminStageForm" style="display:flex; flex-direction:column; gap:0.75rem;">

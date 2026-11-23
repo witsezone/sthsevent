@@ -297,7 +297,7 @@
       const authState = window.STHS_AUTH.getState();
       // Only write to Supabase if event has a real UUID from Postgres
       if (!/^[0-9a-f-]{36}$/i.test(ev.id)) {
-        window.STHS_DB.showToast("Please run supabase/seed_sths_events.sql so this event has a live database ID.", "ℹ️");
+        window.STHS_DB.showToast("Event registration is opening shortly. Contact help.efundanathi@wits.ac.za for early RSVP.", "📅");
         return;
       }
       const { error } = await sb.from("event_registrations").upsert(
@@ -321,24 +321,93 @@
     const labelEl = document.getElementById("hubUserLabel");
     const initEl = document.getElementById("hubUserInitials");
     const createBtn = document.getElementById("hubCreateEventBtn");
-    const statusBtn = document.getElementById("hubSupabaseStatusBtn");
-
-    if (statusBtn) {
-      statusBtn.textContent = window.STHS_DB.isConfigured()
-        ? "Supabase Connected · Production"
-        : "Connect witsezone Supabase Backend";
-    }
+    const accessBtn = document.getElementById("hubAccessAdminBtn");
 
     if (authState.user) {
       const name = [authState.profile?.academic_title, authState.profile?.full_name].filter(Boolean).join(" ") || authState.user.email;
       if (labelEl) labelEl.textContent = name.split(" ").slice(0, 2).join(" ");
       if (initEl) initEl.textContent = window.STHS_AUTH.initialsFrom(authState.profile?.full_name, authState.user.email);
-      if (createBtn) createBtn.style.display = window.STHS_AUTH.isOrganizer() ? "inline-flex" : "none";
+      const isOrg = window.STHS_AUTH.isCommittee();
+      if (createBtn) createBtn.style.display = isOrg ? "inline-flex" : "none";
+      if (accessBtn) accessBtn.style.display = isOrg ? "inline-flex" : "none";
     } else {
       if (labelEl) labelEl.textContent = "Sign In / Register";
       if (initEl) initEl.textContent = "→";
       if (createBtn) createBtn.style.display = "none";
+      if (accessBtn) accessBtn.style.display = "none";
     }
+  }
+
+  async function openHubUserAccessModal() {
+    const modal = document.getElementById("hubUserAccessModal");
+    const box = document.getElementById("hubAccessListContainer");
+    if (!modal || !box) return;
+    box.innerHTML = `<div style="padding:1rem; text-align:center; color:var(--text-muted);">Loading registered accounts…</div>`;
+    modal.classList.add("open");
+
+    const sb = window.STHS_DB.getClient();
+    const { data, error } = await sb.rpc("admin_list_users_and_requests", { p_event_id: null });
+    if (error) {
+      box.innerHTML = `<div class="sths-alert sths-alert-error">${escapeHtml(error.message)}</div>`;
+      return;
+    }
+
+    const isSuper = window.STHS_AUTH.isSuperAdmin();
+    const rows = data || [];
+    if (!rows.length) {
+      box.innerHTML = `<div class="sths-alert sths-alert-info">No registered accounts yet.</div>`;
+      return;
+    }
+
+    box.innerHTML = rows
+      .map((u) => {
+        const isPending = u.profile_approval_status === "pending" || u.event_approval_status === "pending";
+        const reqLabel = u.requested_platform_role || u.requested_event_role;
+        return `
+          <div style="border:1.5px solid ${isPending ? "#d9822b" : "var(--border-light)"}; background:${isPending ? "#fef8ee" : "#fff"}; border-radius:14px; padding:0.9rem 1rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem;">
+            <div>
+              <strong>${escapeHtml(u.display_name || u.email)}</strong>
+              <span style="font-size:0.76rem; color:var(--text-muted);">(${escapeHtml(u.email)})</span>
+              <div style="font-size:0.8rem; color:var(--text-secondary);">${escapeHtml(u.university || "")} · Platform Level: <strong style="text-transform:capitalize;">${escapeHtml(u.platform_role.replace("_", " "))}</strong></div>
+              ${isPending && reqLabel ? `<div style="font-size:0.78rem; color:#9a5205; font-weight:700;">⏳ Requested: ${escapeHtml(window.STHS_AUTH.formatRoleLabel(reqLabel))}</div>` : ""}
+            </div>
+            ${
+              isSuper
+                ? `<div style="display:flex; gap:0.45rem; align-items:center; flex-wrap:wrap;">
+                    <select class="sths-select" data-hub-role-sel="${u.user_id}" style="width:auto; padding:0.4rem 0.6rem; font-size:0.8rem;">
+                      <option value="member" ${u.platform_role === "member" ? "selected" : ""}>Standard Member</option>
+                      <option value="planning_committee" ${u.platform_role === "planning_committee" ? "selected" : ""}>Planning Committee</option>
+                      <option value="super_admin" ${u.platform_role === "super_admin" ? "selected" : ""}>Super Admin</option>
+                    </select>
+                    <button type="button" class="sths-btn sths-btn-primary sths-btn-sm" data-hub-save-role="${u.user_id}">Save</button>
+                  </div>`
+                : `<span style="font-size:0.78rem; color:var(--text-muted);">Managed by Super Admin</span>`
+            }
+          </div>
+        `;
+      })
+      .join("");
+
+    box.querySelectorAll("[data-hub-save-role]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const uid = btn.dataset.hubSaveRole;
+        const newPlat = box.querySelector(`[data-hub-role-sel="${uid}"]`)?.value || "member";
+        const newEv = newPlat === "super_admin" ? "super_admin" : newPlat === "planning_committee" ? "planning_committee" : "delegate";
+        const { data: res, error: err } = await sb.rpc("admin_update_user_access", {
+          p_target_user_id: uid,
+          p_event_id: null,
+          p_new_event_role: newEv,
+          p_new_platform_role: newPlat,
+          p_approval_status: "approved",
+          p_note: "Updated from STHS EventHub Platform Console"
+        });
+        if (err || !res?.ok) window.STHS_DB.showToast(err?.message || res?.error || "Update failed", "⚠️");
+        else {
+          window.STHS_DB.showToast("Platform access updated!", "✅");
+          openHubUserAccessModal();
+        }
+      });
+    });
   }
 
   function bindHubEvents() {
@@ -366,7 +435,7 @@
 
     document.getElementById("hubAccountBtn")?.addEventListener("click", () => window.STHS_AUTH.openAuthModal());
     document.getElementById("hubDockAccountBtn")?.addEventListener("click", () => window.STHS_AUTH.openAuthModal());
-    document.getElementById("hubSupabaseStatusBtn")?.addEventListener("click", () => window.STHS_AUTH.openAuthModal());
+    document.getElementById("hubAccessAdminBtn")?.addEventListener("click", openHubUserAccessModal);
 
     document.querySelectorAll("[data-close-hub-modal]").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -374,7 +443,7 @@
       });
     });
 
-    ["hubEventDetailModal", "hubCreateEventModal"].forEach((id) => {
+    ["hubEventDetailModal", "hubCreateEventModal", "hubUserAccessModal"].forEach((id) => {
       const m = document.getElementById(id);
       m?.addEventListener("click", (e) => {
         if (e.target === m) m.classList.remove("open");

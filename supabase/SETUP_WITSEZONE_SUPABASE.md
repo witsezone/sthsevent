@@ -1,50 +1,24 @@
-# Connecting STHS EventHub to the `witsezone` GitHub Supabase Account
+# Final Database Activation Guide (`ryabexxorzpsuvdfxzyo`)
 
-This repository is production-ready for **Supabase Auth, PostgreSQL (with RLS), Storage, and Realtime** under your **`witsezone` GitHub-linked Supabase account**.
+Your website (`https://witsezone.github.io/sthsevent/` and `https://witsezone.github.io/sthsevent/game-on-symposium-2027/`) is now wired directly to your **`witsezone`** Supabase project (`https://ryabexxorzpsuvdfxzyo.supabase.co`).
 
-## 1. Create the Supabase Project (under `witsezone` GitHub login)
-1. Go to [https://supabase.com/dashboard](https://supabase.com/dashboard) and sign in with your **`witsezone` (`witsezone-star`) GitHub account**.
-2. Create a new project named **`sths-eventhub`** in region **`eu-west-2`** (London) or **`eu-central-1`** (Frankfurt) — Free Tier (\$0/mo).
-3. Wait ~2 minutes until the project status is **Active**.
+## Step 1: Run the One-Click Database Setup SQL (30 seconds)
+Because the publishable key (`sb_publishable_...`) is intentionally read/write-scoped for end users and cannot execute DDL (`CREATE TABLE`), run the schema once in your Supabase SQL Editor (open in regular Chrome or Safari):
 
-## 2. Run the Production Database Migration & Clean Seed
-Open **SQL Editor** in your new `sths-eventhub` Supabase Dashboard and run these two files in order:
-1. [`supabase/migrations/0001_sths_eventhub_schema.sql`](migrations/0001_sths_eventhub_schema.sql) — creates all 20 tables, RLS policies, private anti-cheat & role-guard functions, Storage buckets (`event-public`, `event-submissions`), and Realtime subscriptions.
-2. [`supabase/seed_sths_events.sql`](seed_sths_events.sql) — seeds the official Wits School of Therapeutic Sciences events catalog, GO Game-On! Symposium 2027 tracks, hybrid stages, Amazing Race & Scavenger Hunt quests, and confirmed institutional hosts (zero fake demo users).
+1. Open: https://supabase.com/dashboard/project/ryabexxorzpsuvdfxzyo/sql/new
+2. Copy the entire contents of [`supabase/RUN_ME_ALL_IN_ONE.sql`](RUN_ME_ALL_IN_ONE.sql) and click **Run**.
+   *(It is 100% idempotent — safe to re-run anytime.)*
 
-## 3. Configure Authentication (Email + Magic Link + Sign in with GitHub)
-1. In **Authentication → URL Configuration**:
-   - **Site URL:** `https://witsezone.github.io/sthsevent/` (or `https://witsezone-star.github.io/sthsevent/` before username rename)
-   - **Redirect URLs** (add all of these):
+## Step 2: Configure Auth Redirect URLs & GitHub Sign-In
+1. Open: https://supabase.com/dashboard/project/ryabexxorzpsuvdfxzyo/auth/url-configuration
+   - **Site URL:** `https://witsezone.github.io/sthsevent/`
+   - **Redirect URLs:**
      - `https://witsezone.github.io/sthsevent/**`
-     - `https://witsezone-star.github.io/sthsevent/**`
-     - `http://localhost:8080/**`
-2. In **Authentication → Providers → Email**: ensure **Email** and **Confirm email** (or Magic Link OTP) are enabled.
-3. In **Authentication → Providers → GitHub**:
-   - Copy the **Callback URL** shown in Supabase (`https://<your-project-ref>.supabase.co/auth/v1/callback`).
-   - In GitHub (**Settings → Developer settings → OAuth Apps → New OAuth App** under `witsezone`), set:
-     - **Homepage URL:** `https://witsezone.github.io/sthsevent/`
-     - **Authorization callback URL:** `https://<your-project-ref>.supabase.co/auth/v1/callback`
-   - Paste the **Client ID** and **Client Secret** into Supabase and toggle **GitHub Enabled**.
+     - `https://witsezone.github.io/sthsevent/game-on-symposium-2027/**`
+2. Open: https://supabase.com/dashboard/project/ryabexxorzpsuvdfxzyo/auth/providers
+   - Ensure **Email** is enabled.
+   - Under **GitHub**, copy the Callback URL (`https://ryabexxorzpsuvdfxzyo.supabase.co/auth/v1/callback`), create a GitHub OAuth App under `witsezone` (**GitHub → Settings → Developer settings → OAuth Apps**), and paste the Client ID & Secret back into Supabase.
 
-## 4. Add Your Project URL & Publishable Key
-In **Project Settings → API Keys**, copy:
-- **Project URL** (`https://<project-ref>.supabase.co`)
-- **Publishable Key** (`sb_publishable_...` or legacy `anon` public key — **never** the `service_role` secret key!)
-
-Paste them into `js/supabase-config.js` (or hand them to Antigravity to commit & push):
-```js
-window.STHS_SUPABASE_CONFIG = {
-  url: "https://<your-project-ref>.supabase.co",
-  publishableKey: "sb_publishable_..."
-};
-```
-
-## 5. Promote Your First Super Admin (`wits.ezone@gmail.com`)
-Sign up once on the live website with your organizer email or GitHub account, then run this single SQL line in Supabase SQL Editor:
-```sql
-update public.profiles
-set platform_role = 'super_admin'
-where email = 'wits.ezone@gmail.com';
-```
-You immediately unlock the **STHS Event Studio** (create/edit school events) and **GO Game-On! 2027 Organizer Command Center** (sessions, speakers, live Zoom/Teams stream links, peer review decisions, CSV exports, and analytics).
+## Step 3: Sign In as Primary Super Admin
+Sign up or sign in on `https://witsezone.github.io/sthsevent/game-on-symposium-2027/` using **`spha.msimang@wits.ac.za`**.
+The database trigger automatically grants **`spha.msimang@wits.ac.za`** full **Super Admin** access immediately — unlocking the **User Access & Role Approvals** backend to approve Planning Committee members, Peer Reviewers, Sponsors, Session Chairs, Volunteers, and additional Super Admins.

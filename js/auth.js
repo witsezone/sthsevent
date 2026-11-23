@@ -1,9 +1,22 @@
 /**
- * STHS EventHub — Production Supabase Auth, Event Registration & QR Digital Badge
- * Supports: Email + Password, Passwordless Magic Link (OTP), and Sign in with GitHub
- * Zero demo shortcuts, zero hardcoded fake users.
+ * STHS EventHub — Launch-Ready User Accounts, Role Requests & Digital QR Pass
+ * Supports Email + Password, One-Click Email Sign-In Link, and Sign in with GitHub.
+ * Enforces Approval-Gated Roles: Super Admin, Planning Committee, Peer Reviewer,
+ * Sponsor Partner, Session Chair, and Check-In Volunteer.
  */
 (function () {
+  const ROLE_META = {
+    super_admin: { label: "Super Admin", privileged: true, badge: "badge-terracotta" },
+    planning_committee: { label: "Planning Committee", privileged: true, badge: "badge-navy" },
+    reviewer: { label: "Peer Reviewer", privileged: true, badge: "badge-teal" },
+    session_chair: { label: "Session Chair", privileged: true, badge: "badge-teal" },
+    volunteer: { label: "Check-In Volunteer", privileged: true, badge: "badge-mustard" },
+    sponsor: { label: "Sponsor / Exhibitor", privileged: true, badge: "badge-mustard" },
+    speaker: { label: "Speaker / Presenter", privileged: false, badge: "badge-teal" },
+    student: { label: "Student / Emerging Scholar", privileged: false, badge: "badge-mustard" },
+    delegate: { label: "Delegate", privileged: false, badge: "badge-navy" }
+  };
+
   const state = {
     user: null,
     profile: null,
@@ -28,6 +41,14 @@
     return window.location.origin + window.location.pathname;
   }
 
+  function formatRoleLabel(role) {
+    return ROLE_META[role]?.label || "Delegate";
+  }
+
+  function isPrivilegedRole(role) {
+    return Boolean(ROLE_META[role]?.privileged);
+  }
+
   function initialsFrom(name, email) {
     const src = (name || email || "U").trim();
     const parts = src.split(/\s+/).filter(Boolean);
@@ -35,15 +56,48 @@
     return src.slice(0, 2).toUpperCase();
   }
 
-  function isOrganizer() {
-    if (state.profile && ["organizer", "super_admin"].includes(state.profile.platform_role)) return true;
-    if (state.registration && state.registration.role === "organizer") return true;
+  function isSuperAdmin() {
+    if (state.profile?.platform_role === "super_admin") return true;
+    if (state.registration?.role === "super_admin" && state.registration?.approval_status === "approved") return true;
     return false;
   }
 
+  function isCommittee() {
+    if (isSuperAdmin()) return true;
+    if (state.profile?.platform_role === "planning_committee") return true;
+    if (state.registration?.role === "planning_committee" && state.registration?.approval_status === "approved") return true;
+    return false;
+  }
+
+  function isOrganizer() {
+    return isCommittee();
+  }
+
   function isReviewer() {
-    if (isOrganizer()) return true;
-    return Boolean(state.registration && state.registration.role === "reviewer");
+    if (isCommittee()) return true;
+    return state.registration?.role === "reviewer" && state.registration?.approval_status === "approved";
+  }
+
+  function isModerator() {
+    if (isCommittee()) return true;
+    return state.registration?.role === "session_chair" && state.registration?.approval_status === "approved";
+  }
+
+  function isVolunteer() {
+    if (isCommittee()) return true;
+    return state.registration?.role === "volunteer" && state.registration?.approval_status === "approved";
+  }
+
+  function isSponsor() {
+    if (isCommittee()) return true;
+    return state.registration?.role === "sponsor" && state.registration?.approval_status === "approved";
+  }
+
+  function getEffectiveRole() {
+    if (isSuperAdmin()) return "super_admin";
+    if (state.registration?.role) return state.registration.role;
+    if (state.profile?.platform_role === "planning_committee") return "planning_committee";
+    return "delegate";
   }
 
   async function refreshUserContext() {
@@ -76,12 +130,14 @@
       id: state.user.id,
       email: state.user.email || "",
       full_name: state.user.user_metadata?.full_name || state.user.user_metadata?.user_name || "",
-      academic_title: "",
-      university: "University of the Witwatersrand (Wits)",
-      faculty_department: "",
+      academic_title: state.user.user_metadata?.academic_title || "",
+      university: state.user.user_metadata?.university || "University of the Witwatersrand (Wits)",
+      faculty_department: state.user.user_metadata?.faculty_department || "",
       bio: "",
       research_tags: [],
-      platform_role: "member"
+      platform_role: "member",
+      requested_platform_role: "",
+      approval_status: "approved"
     };
 
     if (state.activeEventId) {
@@ -122,7 +178,6 @@
     return refreshUserContext();
   }
 
-  // Deterministic scannable QR SVG generator (uses qrcode-generator global if loaded, else crisp fallback matrix)
   function renderQrSvg(text) {
     if (typeof window.qrcode === "function") {
       try {
@@ -135,50 +190,43 @@
     return `<div style="padding:1.2rem;font-family:var(--font-mono);font-size:0.78rem;color:#003b5c;border:2px dashed #007377;border-radius:10px;">${text}</div>`;
   }
 
+  function roleOptionsHtml() {
+    return `
+      <optgroup label="Instant Registration Access">
+        <option value="delegate">Delegate / Academic &amp; Clinical Participant</option>
+        <option value="student">Student / Emerging Scholar</option>
+        <option value="speaker">Speaker / Presenter / Game Demo Exhibitor</option>
+      </optgroup>
+      <optgroup label="Restricted Access (Requires Admin Approval)">
+        <option value="planning_committee">Planning &amp; Organizing Committee (Approval Required)</option>
+        <option value="reviewer">Scientific Peer Reviewer (Approval Required)</option>
+        <option value="sponsor">Sponsor / Exhibitor Partner (Approval Required)</option>
+        <option value="session_chair">Session Chair / Stage Moderator (Approval Required)</option>
+        <option value="volunteer">On-Ground Check-In &amp; eZone Volunteer (Approval Required)</option>
+        <option value="super_admin">Super Admin Access Request (Approval Required)</option>
+      </optgroup>
+    `;
+  }
+
   function ensureModalsInDom() {
     if (document.getElementById("sthsAuthModal")) return;
 
     const wrapper = document.createElement("div");
     wrapper.innerHTML = `
-      <!-- Production Auth & Registration Modal -->
+      <!-- Clean Launch-Ready Account & Event Registration Modal -->
       <div class="sths-modal-backdrop" id="sthsAuthModal">
         <div class="sths-modal" role="dialog" aria-modal="true" aria-labelledby="sthsAuthHeading">
           <div class="sths-modal-header">
             <div>
               <h3 id="sthsAuthHeading" class="sths-modal-title">STHS EventHub Account</h3>
-              <p class="sths-modal-subtitle" id="sthsAuthSub">Sign in with your university email, magic link, or GitHub account.</p>
+              <p class="sths-modal-subtitle" id="sthsAuthSub">Sign in with your university email, one-click email link, or GitHub account.</p>
             </div>
             <button type="button" class="sths-modal-close" data-close-sths-modal="sthsAuthModal" aria-label="Close">✕</button>
           </div>
 
           <div id="sthsAuthStatusBanner"></div>
 
-          <!-- Unconfigured Supabase Notice (Organizer Quick Connect) -->
-          <div id="sthsSupabaseSetupPrompt" style="display:none;">
-            <div class="sths-alert sths-alert-warn">
-              <strong>Supabase Backend Pending Connection</strong><br/>
-              This platform connects directly to your <strong>witsezone GitHub Supabase project</strong> for real accounts, abstract uploads, peer review, live Q&amp;A, and leaderboards.
-            </div>
-            <form id="sthsInlineSupabaseConnectForm">
-              <div class="sths-form-group">
-                <label class="sths-label" for="sbSetupUrl">Supabase Project URL (witsezone account)</label>
-                <input id="sbSetupUrl" type="url" class="sths-input" placeholder="https://xxxxxxxxxxxx.supabase.co" required />
-              </div>
-              <div class="sths-form-group">
-                <label class="sths-label" for="sbSetupKey">Supabase Publishable Key (never secret key)</label>
-                <input id="sbSetupKey" type="text" class="sths-input" placeholder="sb_publishable_..." required />
-              </div>
-              <div style="display:flex; gap:0.6rem; flex-wrap:wrap; margin-top:0.75rem;">
-                <button type="submit" class="sths-btn sths-btn-primary" style="flex:1;">Connect Live Supabase</button>
-                <a href="https://supabase.com/dashboard" target="_blank" rel="noopener" class="sths-btn sths-btn-outline sths-btn-sm">Open Supabase Dashboard ↗</a>
-              </div>
-            </form>
-            <p style="font-size:0.78rem; color:var(--text-muted); margin:0.9rem 0 0;">
-              Organizers: Run <code>supabase/migrations/0001_sths_eventhub_schema.sql</code> and <code>supabase/seed_sths_events.sql</code> in your witsezone Supabase SQL Editor, then paste your Project URL &amp; Publishable Key above (or commit them in <code>js/supabase-config.js</code>).
-            </p>
-          </div>
-
-          <!-- Active Auth View (Signed Out) -->
+          <!-- Signed Out View -->
           <div id="sthsAuthSignedOutView">
             <button type="button" class="oauth-btn" id="sthsGitHubSignInBtn">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.57.1.78-.25.78-.55v-2.1c-3.2.7-3.87-1.36-3.87-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.47.11-3.06 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.77.11 3.06.74.81 1.19 1.83 1.19 3.09 0 4.41-2.69 5.39-5.25 5.67.41.36.78 1.06.78 2.14v3.18c0 .31.21.66.79.55A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z"/></svg>
@@ -189,7 +237,7 @@
 
             <div class="auth-tabs" role="tablist">
               <button type="button" class="auth-tab-btn active" data-auth-mode="signin">Sign In</button>
-              <button type="button" class="auth-tab-btn" data-auth-mode="signup">Create Account</button>
+              <button type="button" class="auth-tab-btn" data-auth-mode="signup">Register</button>
               <button type="button" class="auth-tab-btn" data-auth-mode="magic">Email Link</button>
             </div>
 
@@ -203,13 +251,13 @@
                 <label class="sths-label" for="authSignInPassword">Password</label>
                 <input id="authSignInPassword" type="password" class="sths-input" placeholder="Enter your password" autocomplete="current-password" required />
               </div>
-              <button type="submit" class="sths-btn sths-btn-primary" style="width:100%;">Sign In to EventHub</button>
+              <button type="submit" class="sths-btn sths-btn-primary" style="width:100%;">Sign In</button>
               <div style="text-align:center; margin-top:0.75rem;">
                 <button type="button" id="sthsForgotPasswordBtn" style="background:none;border:none;color:var(--sths-teal);font-weight:700;font-size:0.82rem;cursor:pointer;">Forgot your password?</button>
               </div>
             </form>
 
-            <!-- Create Account + Event Registration -->
+            <!-- Create Account & Choose Function / Role -->
             <form id="sthsSignUpForm" style="display:none;">
               <div class="sths-form-row">
                 <div class="sths-form-group">
@@ -261,13 +309,20 @@
                   <input id="authSignUpDept" type="text" class="sths-input" placeholder="e.g. School of Therapeutic Sciences" />
                 </div>
               </div>
-              <button type="submit" class="sths-btn sths-btn-primary" style="width:100%;">Create Account &amp; Continue</button>
+              <div class="sths-form-group">
+                <label class="sths-label" for="authSignUpRole">Role / Function *</label>
+                <select id="authSignUpRole" class="sths-select">${roleOptionsHtml()}</select>
+              </div>
+              <div id="authSignUpApprovalHint" class="sths-alert sths-alert-info" style="display:none; font-size:0.8rem;">
+                You will receive immediate <strong>Delegate</strong> access upon sign-up while your requested committee/reviewer/partner permissions await administrator approval.
+              </div>
+              <button type="submit" class="sths-btn sths-btn-primary" style="width:100%;">Create Account &amp; Register</button>
             </form>
 
-            <!-- Magic Link / Email OTP -->
+            <!-- Magic Link -->
             <form id="sthsMagicLinkForm" style="display:none;">
               <p style="font-size:0.84rem; color:var(--text-secondary); margin:0 0 0.8rem;">
-                We will email you a secure one-click sign-in link — no password required. Works with any university or personal email.
+                Enter your email address and we will send you a secure one-click sign-in link — no password required.
               </p>
               <div class="sths-form-group">
                 <label class="sths-label" for="authMagicEmail">Email Address</label>
@@ -277,9 +332,11 @@
             </form>
           </div>
 
-          <!-- Signed-In Profile & Event Registration View -->
+          <!-- Signed-In Profile, Role Status & Event Registration View -->
           <div id="sthsAuthSignedInView" style="display:none;">
             <div class="sths-alert sths-alert-success" id="sthsSignedInSummary"></div>
+            <div class="sths-alert sths-alert-warn" id="sthsPendingRoleNotice" style="display:none;"></div>
+
             <form id="sthsEventRegForm">
               <div class="sths-form-row">
                 <div class="sths-form-group">
@@ -307,22 +364,17 @@
                     <label class="sths-label" for="regAttendanceMode">Attendance Mode *</label>
                     <select id="regAttendanceMode" class="sths-select">
                       <option value="in_person">On-Ground (eFundanathi eZone, Wits) + Online Access</option>
-                      <option value="online">Online Only (Zoom &amp; Microsoft Teams Stream)</option>
+                      <option value="online">Online Only (Zoom &amp; Microsoft Teams)</option>
                     </select>
                   </div>
                   <div class="sths-form-group">
-                    <label class="sths-label" for="regRoleSelect">Participant Category *</label>
-                    <select id="regRoleSelect" class="sths-select">
-                      <option value="delegate">Academic / Clinical Delegate</option>
-                      <option value="speaker">Speaker / Abstract Presenter</option>
-                      <option value="student">Postgraduate / Undergraduate Student</option>
-                      <option value="exhibitor">Sponsor / Game Studio / Exhibitor</option>
-                    </select>
+                    <label class="sths-label" for="regRoleSelect">Role / Access Request *</label>
+                    <select id="regRoleSelect" class="sths-select">${roleOptionsHtml()}</select>
                   </div>
                 </div>
                 <div class="sths-form-group">
                   <label class="sths-label" for="regDietary">Accessibility / Dietary Notes (Optional)</label>
-                  <input id="regDietary" type="text" class="sths-input" placeholder="e.g. Vegetarian, Halaal, wheelchair access, live captions" />
+                  <input id="regDietary" type="text" class="sths-input" placeholder="e.g. Vegetarian, Halaal, wheelchair access, captions" />
                 </div>
                 <label style="display:flex; align-items:center; gap:0.5rem; font-size:0.84rem; font-weight:600; margin-bottom:0.9rem; cursor:pointer;">
                   <input id="regPublicDir" type="checkbox" checked />
@@ -330,8 +382,8 @@
                 </label>
               </div>
               <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
-                <button type="submit" class="sths-btn sths-btn-primary" style="flex:1;">Save Registration &amp; Profile</button>
-                <button type="button" class="sths-btn sths-btn-outline sths-btn-sm" id="sthsOpenBadgeFromAuthBtn">View QR Pass</button>
+                <button type="submit" class="sths-btn sths-btn-primary" style="flex:1;">Save Profile &amp; Registration</button>
+                <button type="button" class="sths-btn sths-btn-outline sths-btn-sm" id="sthsOpenBadgeFromAuthBtn">QR Pass</button>
                 <button type="button" class="sths-btn sths-btn-outline sths-btn-sm" id="sthsSignOutBtn">Sign Out</button>
               </div>
             </form>
@@ -339,7 +391,7 @@
         </div>
       </div>
 
-      <!-- Digital QR Delegate Badge Modal -->
+      <!-- Digital QR Delegate Pass Modal -->
       <div class="sths-modal-backdrop" id="sthsQrBadgeModal">
         <div class="sths-modal" role="dialog" aria-modal="true" aria-labelledby="qrBadgeHeading">
           <div class="sths-modal-header">
@@ -360,10 +412,7 @@
   function setStatusBanner(type, message) {
     const el = document.getElementById("sthsAuthStatusBanner");
     if (!el) return;
-    if (!message) {
-      el.innerHTML = "";
-      return;
-    }
+    if (!message) { el.innerHTML = ""; return; }
     el.innerHTML = `<div class="sths-alert sths-alert-${type}">${message}</div>`;
   }
 
@@ -376,12 +425,9 @@
 
     ["sthsAuthModal", "sthsQrBadgeModal"].forEach((id) => {
       const el = document.getElementById(id);
-      el?.addEventListener("click", (e) => {
-        if (e.target === el) el.classList.remove("open");
-      });
+      el?.addEventListener("click", (e) => { if (e.target === el) el.classList.remove("open"); });
     });
 
-    // Auth mode tabs
     document.querySelectorAll(".auth-tab-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
         const mode = btn.dataset.authMode;
@@ -393,27 +439,11 @@
       });
     });
 
-    // Inline Supabase Connection Form (Organizer Setup)
-    document.getElementById("sthsInlineSupabaseConnectForm")?.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      setStatusBanner("info", "Testing connection to Supabase…");
-      try {
-        const url = document.getElementById("sbSetupUrl").value;
-        const key = document.getElementById("sbSetupKey").value;
-        window.STHS_DB.saveRuntimeConfig(url, key);
-        const test = await window.STHS_DB.testConnection();
-        if (!test.ok) {
-          setStatusBanner("warn", `Connected to Supabase, but schema check returned: ${test.error}. Make sure you ran <code>0001_sths_eventhub_schema.sql</code> in SQL Editor.`);
-        } else {
-          window.STHS_DB.showToast("Connected to live Supabase database!", "✅");
-          window.location.reload();
-        }
-      } catch (err) {
-        setStatusBanner("error", err.message);
-      }
+    document.getElementById("authSignUpRole")?.addEventListener("change", (e) => {
+      const hint = document.getElementById("authSignUpApprovalHint");
+      if (hint) hint.style.display = isPrivilegedRole(e.target.value) ? "block" : "none";
     });
 
-    // GitHub OAuth
     document.getElementById("sthsGitHubSignInBtn")?.addEventListener("click", async () => {
       const sb = window.STHS_DB?.getClient();
       if (!sb) return;
@@ -425,7 +455,6 @@
       if (error) setStatusBanner("error", error.message);
     });
 
-    // Email + Password Sign In
     document.getElementById("sthsSignInForm")?.addEventListener("submit", async (e) => {
       e.preventDefault();
       const sb = window.STHS_DB?.getClient();
@@ -437,14 +466,12 @@
       if (error) {
         setStatusBanner("error", error.message);
       } else {
-        setStatusBanner("success", "Signed in! Loading your profile…");
         await refreshUserContext();
         window.STHS_DB.showToast("Welcome back to STHS EventHub!", "👋");
-        openAuthModal();
+        document.getElementById("sthsAuthModal")?.classList.remove("open");
       }
     });
 
-    // Forgot Password
     document.getElementById("sthsForgotPasswordBtn")?.addEventListener("click", async () => {
       const sb = window.STHS_DB?.getClient();
       const email = document.getElementById("authSignInEmail").value.trim();
@@ -454,10 +481,9 @@
       }
       const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: getRedirectUrl() });
       if (error) setStatusBanner("error", error.message);
-      else setStatusBanner("success", `Password reset link sent to <strong>${email}</strong>.`);
+      else setStatusBanner("success", `Password reset instructions sent to <strong>${email}</strong>.`);
     });
 
-    // Sign Up + Profile creation
     document.getElementById("sthsSignUpForm")?.addEventListener("submit", async (e) => {
       e.preventDefault();
       const sb = window.STHS_DB?.getClient();
@@ -469,13 +495,20 @@
       const password = document.getElementById("authSignUpPassword").value;
       const university = document.getElementById("authSignUpUni").value.trim();
       const dept = document.getElementById("authSignUpDept").value.trim();
+      const chosenRole = document.getElementById("authSignUpRole").value;
 
       const { data, error } = await sb.auth.signUp({
         email,
         password,
         options: {
           emailRedirectTo: getRedirectUrl(),
-          data: { full_name: fullName, academic_title: title, university }
+          data: {
+            full_name: fullName,
+            academic_title: title,
+            university,
+            faculty_department: dept,
+            requested_role: chosenRole
+          }
         }
       });
       if (error) {
@@ -490,46 +523,60 @@
           full_name: fullName,
           academic_title: title,
           university,
-          faculty_department: dept
+          faculty_department: dept,
+          requested_platform_role: ["super_admin", "planning_committee"].includes(chosenRole) ? chosenRole : ""
         });
+
         if (state.activeEventId) {
           await sb.from("event_registrations").upsert({
             event_id: state.activeEventId,
             user_id: data.user.id,
-            role: "delegate",
+            role: isPrivilegedRole(chosenRole) ? "delegate" : chosenRole,
+            requested_role: isPrivilegedRole(chosenRole) ? chosenRole : "",
             attendance_mode: "in_person",
             public_in_directory: true
           }, { onConflict: "event_id,user_id" });
         }
+
         await refreshUserContext();
-        window.STHS_DB.showToast("Account created & registered!", "🎉");
-        openAuthModal();
+        window.STHS_DB.showToast(
+          isPrivilegedRole(chosenRole)
+            ? `Account created! Your request for ${formatRoleLabel(chosenRole)} access has been sent for administrator approval.`
+            : "Account created & registered!",
+          "🎉"
+        );
+        document.getElementById("sthsAuthModal")?.classList.remove("open");
       } else {
-        setStatusBanner("success", `Verification email sent to <strong>${email}</strong>. Click the confirmation link in your inbox to activate your account.`);
+        setStatusBanner(
+          "success",
+          `Confirmation email sent to <strong>${email}</strong>. Click the verification link in your inbox to activate your account.`
+        );
       }
     });
 
-    // Magic Link OTP
     document.getElementById("sthsMagicLinkForm")?.addEventListener("submit", async (e) => {
       e.preventDefault();
       const sb = window.STHS_DB?.getClient();
       if (!sb) return;
       const email = document.getElementById("authMagicEmail").value.trim();
-      setStatusBanner("info", "Sending one-click sign-in link…");
+      setStatusBanner("info", "Sending your secure sign-in link…");
       const { error } = await sb.auth.signInWithOtp({
         email,
         options: { emailRedirectTo: getRedirectUrl() }
       });
       if (error) setStatusBanner("error", error.message);
-      else setStatusBanner("success", `Check <strong>${email}</strong> for your one-click sign-in link!`);
+      else setStatusBanner("success", `Check <strong>${email}</strong> for your one-click sign-in link.`);
     });
 
-    // Save Profile & Event Registration
     document.getElementById("sthsEventRegForm")?.addEventListener("submit", async (e) => {
       e.preventDefault();
       const sb = window.STHS_DB?.getClient();
       if (!sb || !state.user) return;
       setStatusBanner("info", "Saving your profile & event registration…");
+
+      const chosenRole = document.getElementById("regRoleSelect")?.value || "delegate";
+      const currentRole = state.registration?.role || "delegate";
+      const requestingUpgrade = isPrivilegedRole(chosenRole) && chosenRole !== currentRole && !isSuperAdmin();
 
       const profilePayload = {
         id: state.user.id,
@@ -540,34 +587,39 @@
         faculty_department: document.getElementById("regProfileDept").value.trim(),
         public_directory: document.getElementById("regPublicDir").checked
       };
-
-      const { error: pErr } = await sb.from("profiles").upsert(profilePayload);
-      if (pErr) {
-        setStatusBanner("error", pErr.message);
-        return;
+      if (requestingUpgrade && ["super_admin", "planning_committee"].includes(chosenRole)) {
+        profilePayload.requested_platform_role = chosenRole;
       }
 
+      const { error: pErr } = await sb.from("profiles").upsert(profilePayload);
+      if (pErr) { setStatusBanner("error", pErr.message); return; }
+
       if (state.activeEventId) {
-        const chosenRole = document.getElementById("regRoleSelect").value;
-        const preserveRole = state.registration && ["organizer", "reviewer"].includes(state.registration.role)
-          ? state.registration.role
-          : chosenRole;
-        const { error: rErr } = await sb.from("event_registrations").upsert({
+        const regPayload = {
           event_id: state.activeEventId,
           user_id: state.user.id,
-          role: preserveRole,
           attendance_mode: document.getElementById("regAttendanceMode").value,
           dietary_accessibility: document.getElementById("regDietary").value.trim(),
           public_in_directory: document.getElementById("regPublicDir").checked
-        }, { onConflict: "event_id,user_id" });
-        if (rErr) {
-          setStatusBanner("error", rErr.message);
-          return;
+        };
+        if (requestingUpgrade) {
+          regPayload.role = currentRole;
+          regPayload.requested_role = chosenRole;
+        } else if (!isPrivilegedRole(chosenRole)) {
+          regPayload.role = isPrivilegedRole(currentRole) ? currentRole : chosenRole;
         }
+
+        const { error: rErr } = await sb.from("event_registrations").upsert(regPayload, { onConflict: "event_id,user_id" });
+        if (rErr) { setStatusBanner("error", rErr.message); return; }
       }
 
       await refreshUserContext();
-      window.STHS_DB.showToast("Registration & profile saved!", "✅");
+      window.STHS_DB.showToast(
+        requestingUpgrade
+          ? `Profile saved! Your request for ${formatRoleLabel(chosenRole)} access is pending approval.`
+          : "Registration & profile updated!",
+        "✅"
+      );
       document.getElementById("sthsAuthModal")?.classList.remove("open");
     });
 
@@ -588,19 +640,11 @@
   function openAuthModal(defaultTab = "signin") {
     ensureModalsInDom();
     const modal = document.getElementById("sthsAuthModal");
-    const setupBox = document.getElementById("sthsSupabaseSetupPrompt");
     const signedOutBox = document.getElementById("sthsAuthSignedOutView");
     const signedInBox = document.getElementById("sthsAuthSignedInView");
     setStatusBanner(null, "");
 
-    if (!window.STHS_DB?.isConfigured()) {
-      setupBox.style.display = "block";
-      signedOutBox.style.display = "none";
-      signedInBox.style.display = "none";
-      document.getElementById("sthsAuthHeading").textContent = "Connect Wits STHS Supabase";
-      document.getElementById("sthsAuthSub").textContent = "Link your witsezone GitHub Supabase project to activate live sign-in.";
-    } else if (state.user) {
-      setupBox.style.display = "none";
+    if (state.user) {
       signedOutBox.style.display = "none";
       signedInBox.style.display = "block";
       document.getElementById("sthsAuthHeading").textContent = "My Account & Event Registration";
@@ -613,23 +657,30 @@
       document.getElementById("regProfileUni").value = p.university || "University of the Witwatersrand (Wits)";
       document.getElementById("regProfileDept").value = p.faculty_department || "";
       document.getElementById("sthsEventRegExtraFields").style.display = state.activeEventId ? "block" : "none";
+
       if (state.activeEventId) {
         document.getElementById("regAttendanceMode").value = r.attendance_mode || "in_person";
-        if (["delegate", "speaker", "student", "exhibitor"].includes(r.role)) {
-          document.getElementById("regRoleSelect").value = r.role;
-        }
+        document.getElementById("regRoleSelect").value = r.requested_role || r.role || "delegate";
         document.getElementById("regDietary").value = r.dietary_accessibility || "";
         document.getElementById("regPublicDir").checked = r.public_in_directory !== false;
       }
 
-      const roleTag = isOrganizer() ? "Organizer / Admin" : (r.role || "Member");
+      const activeRoleLabel = formatRoleLabel(getEffectiveRole());
       document.getElementById("sthsSignedInSummary").innerHTML = `
-        <strong>Signed in as ${[p.academic_title, p.full_name].filter(Boolean).join(" ") || state.user.email}</strong>
-        · Role: <strong style="text-transform:capitalize;">${roleTag}</strong>
+        <strong>${[p.academic_title, p.full_name].filter(Boolean).join(" ") || state.user.email}</strong>
+        · Active Access: <strong>${activeRoleLabel}</strong>
         ${r.badge_code ? ` · Pass ID: <code>${r.badge_code}</code>` : ""}
       `;
+
+      const pendingBox = document.getElementById("sthsPendingRoleNotice");
+      const reqRole = r.requested_role || p.requested_platform_role;
+      if ((r.approval_status === "pending" || p.approval_status === "pending") && reqRole) {
+        pendingBox.style.display = "block";
+        pendingBox.innerHTML = `<strong>Pending Administrator Approval:</strong> Your request for <strong>${formatRoleLabel(reqRole)}</strong> access is awaiting review. You have full ${activeRoleLabel} access in the meantime.`;
+      } else {
+        pendingBox.style.display = "none";
+      }
     } else {
-      setupBox.style.display = "none";
       signedOutBox.style.display = "block";
       signedInBox.style.display = "none";
       document.getElementById("sthsAuthHeading").textContent = "Sign In or Register";
@@ -646,12 +697,12 @@
     const modal = document.getElementById("sthsQrBadgeModal");
     const body = document.getElementById("sthsQrBadgeBody");
 
-    if (!window.STHS_DB?.isConfigured() || !state.user) {
+    if (!state.user) {
       body.innerHTML = `
         <div class="sths-alert sths-alert-info">
-          Sign in and complete your event registration to generate your personal scannable QR Check-In Pass and Networking Badge.
+          Sign in and complete your registration to generate your personal scannable QR Check-In Pass and Networking Badge.
         </div>
-        <button type="button" class="sths-btn sths-btn-primary" style="width:100%;" id="qrSignInNowBtn">Sign In / Register Now</button>
+        <button type="button" class="sths-btn sths-btn-primary" style="width:100%;" id="qrSignInNowBtn">Sign In / Register</button>
       `;
       modal.classList.add("open");
       document.getElementById("qrSignInNowBtn")?.addEventListener("click", () => {
@@ -682,19 +733,13 @@
         <h4 style="margin:0.35rem 0 0.15rem; font-size:1.3rem; font-weight:800;">${fullName}</h4>
         <div style="font-size:0.86rem; opacity:0.9;">${p.university || "University Delegate"}</div>
         <div class="qr-badge-box">${renderQrSvg(qrPayload)}</div>
-        <div>
-          <span class="qr-badge-code">${badgeCode}</span>
-        </div>
+        <div><span class="qr-badge-code">${badgeCode}</span></div>
         <div style="margin-top:0.85rem; display:flex; justify-content:center; gap:0.5rem; flex-wrap:wrap; font-size:0.78rem; font-weight:700;">
-          <span style="background:rgba(255,255,255,0.18); padding:0.25rem 0.7rem; border-radius:999px; text-transform:capitalize;">
-            ${r.role || "delegate"}
-          </span>
+          <span style="background:rgba(255,255,255,0.18); padding:0.25rem 0.7rem; border-radius:999px;">${formatRoleLabel(getEffectiveRole())}</span>
           <span style="background:rgba(255,255,255,0.18); padding:0.25rem 0.7rem; border-radius:999px;">
             ${r.attendance_mode === "online" ? "🌐 Online Pass" : "📍 On-Ground + Online Pass"}
           </span>
-          <span style="background:rgba(197,150,39,0.35); padding:0.25rem 0.7rem; border-radius:999px;">
-            ⚡ ${r.xp_points || 0} XP
-          </span>
+          <span style="background:rgba(197,150,39,0.35); padding:0.25rem 0.7rem; border-radius:999px;">⚡ ${r.xp_points || 0} XP</span>
         </div>
       </div>
     `;
@@ -702,10 +747,6 @@
   }
 
   function requireAuth(actionLabel = "continue") {
-    if (!window.STHS_DB?.isConfigured()) {
-      openAuthModal();
-      return false;
-    }
     if (!state.user) {
       window.STHS_DB.showToast(`Please sign in to ${actionLabel}.`, "🔐");
       openAuthModal("signin");
@@ -723,8 +764,17 @@
     openQrBadgeModal,
     requireAuth,
     initialsFrom,
+    formatRoleLabel,
+    isPrivilegedRole,
+    isSuperAdmin,
+    isCommittee,
     isOrganizer,
     isReviewer,
+    isModerator,
+    isVolunteer,
+    isSponsor,
+    getEffectiveRole,
+    ROLE_META,
     getState: () => ({ ...state })
   };
 })();

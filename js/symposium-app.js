@@ -38,7 +38,12 @@
     leaderboards: { universities: [], individuals: [] },
     sponsorBooths: [...OFFICIAL.defaultPartnerBooths],
     mySponsorLeads: new Set(),
+    sponsorPartnerLeads: [],
     sponsorInquiries: [],
+    adminUsers: [],
+    adminAuditLogs: [],
+    adminUserSearch: "",
+    adminUserRoleFilter: "ALL",
     directMessages: [],
     realtimeChannels: []
   };
@@ -284,9 +289,25 @@
         });
       }
 
-      if (window.STHS_AUTH.isOrganizer()) {
-        const { data: inq } = await sb.from("sponsor_inquiries").select("*").eq("event_id", ev.id).order("created_at", { ascending: false });
-        state.sponsorInquiries = inq || [];
+      if (window.STHS_AUTH.isCommittee()) {
+        const [inqRes, usersRes, auditRes] = await Promise.all([
+          sb.from("sponsor_inquiries").select("*").eq("event_id", ev.id).order("created_at", { ascending: false }),
+          sb.rpc("admin_list_users_and_requests", { p_event_id: ev.id }),
+          sb.rpc("admin_list_role_audit", { p_event_id: ev.id })
+        ]);
+        state.sponsorInquiries = inqRes.data || [];
+        state.adminUsers = usersRes.data || [];
+        state.adminAuditLogs = auditRes.data || [];
+      } else {
+        state.adminUsers = [];
+        state.adminAuditLogs = [];
+      }
+
+      if (window.STHS_AUTH.isSponsor()) {
+        const { data: leadsData } = await sb.rpc("sponsor_get_my_leads", { p_event_id: ev.id });
+        state.sponsorPartnerLeads = leadsData || [];
+      } else {
+        state.sponsorPartnerLeads = [];
       }
     }
 
@@ -397,10 +418,20 @@
     const sheetAdminTile = document.getElementById("sheetAdminTile");
     const addSessBtn = document.getElementById("openAddSessionModalBtn");
 
-    const isOrg = window.STHS_AUTH.isOrganizer();
-    if (adminTabBtn) adminTabBtn.style.display = isOrg ? "inline-flex" : "none";
-    if (sheetAdminTile) sheetAdminTile.style.display = isOrg ? "flex" : "none";
-    if (addSessBtn) addSessBtn.style.display = isOrg ? "inline-flex" : "none";
+    const isStaff = window.STHS_AUTH.isVolunteer();
+    const isComm = window.STHS_AUTH.isCommittee();
+    if (adminTabBtn) adminTabBtn.style.display = isStaff ? "inline-flex" : "none";
+    if (sheetAdminTile) sheetAdminTile.style.display = isStaff ? "flex" : "none";
+    if (addSessBtn) addSessBtn.style.display = isComm ? "inline-flex" : "none";
+
+    const pendingCount = state.adminUsers.filter(
+      (u) => u.event_approval_status === "pending" || u.profile_approval_status === "pending"
+    ).length;
+    const badgeEl = document.getElementById("navPendingApprovalsBadge");
+    if (badgeEl) {
+      badgeEl.textContent = pendingCount;
+      badgeEl.style.display = isComm && pendingCount > 0 ? "inline-flex" : "none";
+    }
 
     if (auth.user) {
       const xp = auth.registration?.xp_points || 0;
@@ -759,9 +790,9 @@
       gate.innerHTML = `
         <div class="empty-prod-card">
           <div style="font-size:2.1rem;">⚖️</div>
-          <h4>Scientific Committee &amp; Assigned Reviewers Workspace</h4>
-          <p>Double-blind peer review, conflict-of-interest declarations, and schedule promotion are protected by Supabase Row-Level Security. Sign in with an authorized Reviewer or Organizer account to access the review queue.</p>
-          <button type="button" class="btn btn-primary btn-sm" id="revGateSignInBtn">Sign In with Committee Account</button>
+          <h4>Scientific Committee &amp; Approved Peer Reviewers</h4>
+          <p>Double-blind peer review, conflict-of-interest declarations, and schedule promotion are reserved for approved Scientific Committee reviewers, Planning Committee members, and Super Admins. Register as a Peer Reviewer to request committee access.</p>
+          <button type="button" class="btn btn-primary btn-sm" id="revGateSignInBtn">Sign In or Request Reviewer Access</button>
         </div>
       `;
       document.getElementById("revGateSignInBtn")?.addEventListener("click", () => window.STHS_AUTH.openAuthModal());
@@ -902,20 +933,32 @@
       container.innerHTML = `<div style="font-size:0.84rem; color:var(--ink-muted); text-align:center; padding:1rem;">No questions posted for this stage yet. Ask the first question above!</div>`;
       return;
     }
+    const canModerate = window.STHS_AUTH.isModerator();
     container.innerHTML = state.qaQuestions
       .map((q) => {
         const upvoted = state.myQaUpvotes.has(q.id);
         return `
           <div style="background:var(--bg-cream); border:1.5px solid #dfd3be; border-radius:12px; padding:0.7rem 0.85rem; display:flex; justify-content:space-between; gap:0.75rem; align-items:flex-start;">
-            <div>
+            <div style="flex:1;">
               <div style="font-size:0.75rem; font-weight:700; color:var(--teal-dark);">${esc(q.author_name)} ${q.author_university ? `· ${esc(q.author_university)}` : ""} ${q.is_answered ? '<span class="badge badge-success">Answered</span>' : ""}</div>
               <div style="font-size:0.86rem; margin-top:0.2rem;">${esc(q.question_text)}</div>
+              ${canModerate ? `<button type="button" class="chip-btn" data-toggle-qa-answered="${q.id}" data-cur-answered="${q.is_answered ? "1" : "0"}" style="margin-top:0.4rem; font-size:0.71rem;">${q.is_answered ? "↩ Mark Unanswered" : "✓ Mark Answered"}</button>` : ""}
             </div>
             <button type="button" class="btn ${upvoted ? "btn-primary" : "btn-outline"} btn-sm" data-upvote-qa="${q.id}" style="min-width:56px;">▲ ${q.upvote_count}</button>
           </div>
         `;
       })
       .join("");
+
+    container.querySelectorAll("[data-toggle-qa-answered]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const sb = window.STHS_DB.getClient();
+        const nextVal = btn.dataset.curAnswered !== "1";
+        await sb.from("live_qa_questions").update({ is_answered: nextVal }).eq("id", btn.dataset.toggleQaAnswered);
+        await loadStageQa();
+        renderLiveQa();
+      });
+    });
 
     container.querySelectorAll("[data-upvote-qa]").forEach((btn) => {
       btn.addEventListener("click", async () => {
@@ -980,7 +1023,7 @@
       btn.addEventListener("click", async () => {
         if (!window.STHS_AUTH.requireAuth("vote in the live poll")) return;
         if (!poll.id) {
-          window.STHS_DB.showToast("Live poll will activate once Supabase seed SQL is executed.", "ℹ️");
+          window.STHS_DB.showToast("Live voting opens as soon as the session chair activates this poll.", "📊");
           return;
         }
         const sb = window.STHS_DB.getClient();
@@ -1072,7 +1115,7 @@
   async function submitQuest(questId, answer) {
     if (!window.STHS_AUTH.requireAuth("unlock Amazing Race & Scavenger Hunt XP")) return;
     if (!/^[0-9a-f-]{36}$/i.test(questId)) {
-      window.STHS_DB.showToast("Please run supabase/seed_sths_events.sql in your witsezone Supabase project to activate live server-verified quests.", "ℹ️");
+      window.STHS_DB.showToast("The Amazing Race & Scavenger Hunt checkpoints unlock once registration opens live.", "🏁");
       return;
     }
     const sb = window.STHS_DB.getClient();
@@ -1217,7 +1260,7 @@
           if (!window.STHS_AUTH.requireAuth("connect with this exhibitor booth")) return;
           const boothId = btn.dataset.boothLead;
           if (!/^[0-9a-f-]{36}$/i.test(boothId)) {
-            window.STHS_DB.showToast("Booth lead capture activates once Supabase seed SQL is executed.", "ℹ️");
+            window.STHS_DB.showToast("Partner booth connections open once live registration is active.", "🤝");
             return;
           }
           const sb = window.STHS_DB.getClient();
@@ -1235,21 +1278,75 @@
         });
       });
     }
+    // Sponsor Partner Lead Capture Inbox (Visible to Approved Sponsors & Planning Committee/Super Admin)
+    const leadsPanel = document.getElementById("sponsorPartnerLeadsPanel");
+    const leadsList = document.getElementById("sponsorLeadsListContainer");
+    if (leadsPanel && leadsList) {
+      if (window.STHS_AUTH.isSponsor()) {
+        leadsPanel.style.display = "block";
+        leadsList.innerHTML = state.sponsorPartnerLeads.length
+          ? state.sponsorPartnerLeads
+              .map(
+                (l) => `
+                <div style="background:#fff; border:1.5px solid var(--ink-espresso); border-radius:10px; padding:0.7rem 0.9rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+                  <div>
+                    <strong>${esc(l.delegate_name)}</strong> · <span style="color:var(--teal-dark); font-weight:700;">${esc(l.university)}</span>
+                    <div style="font-size:0.78rem; color:var(--ink-muted);">Booth: ${esc(l.booth_name)} · <a href="mailto:${esc(l.delegate_email)}">${esc(l.delegate_email)}</a></div>
+                  </div>
+                  <span class="badge badge-mustard">${esc(window.STHS_AUTH.formatRoleLabel(l.role))}</span>
+                </div>
+              `
+              )
+              .join("")
+          : `<div style="font-size:0.84rem; color:var(--ink-muted); padding:0.75rem 0;">No delegates have shared their contact card with your booth yet.</div>`;
+      } else {
+        leadsPanel.style.display = "none";
+      }
+    }
   }
 
   function renderAdminDashboard() {
-    if (!window.STHS_AUTH.isOrganizer()) return;
+    const isVol = window.STHS_AUTH.isVolunteer();
+    const isComm = window.STHS_AUTH.isCommittee();
+    const isSuper = window.STHS_AUTH.isSuperAdmin();
+    if (!isVol) return;
+
     const metricsEl = document.getElementById("adminMetricsGrid");
     const stageSel = document.getElementById("admStageSelect");
     const inqEl = document.getElementById("adminSponsorInquiriesList");
+    const accessCard = document.getElementById("adminUserAccessCard");
+    const broadcastGrid = document.getElementById("adminBroadcastAndPollsGrid");
+    const exportCluster = document.getElementById("adminExportCluster");
+    const policyHint = document.getElementById("adminRbacPolicyHint");
+
+    if (accessCard) accessCard.style.display = isComm ? "block" : "none";
+    if (broadcastGrid) broadcastGrid.style.display = isComm ? "grid" : "none";
+    if (exportCluster) exportCluster.style.display = isComm ? "flex" : "none";
+
+    if (policyHint) {
+      policyHint.textContent = isSuper
+        ? "Super Admin Mode: You can approve all pending requests and promote/update any user to Super Admin, Planning Committee, Peer Reviewer, Sponsor, Session Chair, Volunteer, Speaker, Student, or Delegate."
+        : "Planning Committee Mode: You can approve Peer Reviewers, Sponsors, Session Chairs, Volunteers, and Speakers. Super Admin & Planning Committee promotions require a Super Admin.";
+    }
+
+    const pendingUsers = state.adminUsers.filter(
+      (u) => u.event_approval_status === "pending" || u.profile_approval_status === "pending"
+    );
 
     if (metricsEl) {
-      metricsEl.innerHTML = `
-        <div class="card"><span class="badge badge-teal">SESSIONS</span><div style="font-family:var(--font-display);font-size:2rem;margin-top:0.35rem;">${state.sessions.length}</div></div>
-        <div class="card"><span class="badge badge-mustard">DIRECTORY PROFILES</span><div style="font-family:var(--font-display);font-size:2rem;margin-top:0.35rem;">${state.directory.length}</div></div>
-        <div class="card"><span class="badge badge-terracotta">ABSTRACTS</span><div style="font-family:var(--font-display);font-size:2rem;margin-top:0.35rem;">${state.reviewAbstracts.length}</div></div>
-        <div class="card"><span class="badge badge-navy">SPONSOR PLEDGES</span><div style="font-family:var(--font-display);font-size:2rem;margin-top:0.35rem;">${state.sponsorInquiries.length}</div></div>
-      `;
+      metricsEl.innerHTML = isComm
+        ? `
+          <div class="card"><span class="badge badge-terracotta">PENDING APPROVALS</span><div style="font-family:var(--font-display);font-size:2rem;margin-top:0.35rem;">${pendingUsers.length}</div></div>
+          <div class="card"><span class="badge badge-teal">REGISTERED ACCOUNTS</span><div style="font-family:var(--font-display);font-size:2rem;margin-top:0.35rem;">${state.adminUsers.length}</div></div>
+          <div class="card"><span class="badge badge-mustard">ABSTRACTS</span><div style="font-family:var(--font-display);font-size:2rem;margin-top:0.35rem;">${state.reviewAbstracts.length}</div></div>
+          <div class="card"><span class="badge badge-navy">SPONSOR PLEDGES</span><div style="font-family:var(--font-display);font-size:2rem;margin-top:0.35rem;">${state.sponsorInquiries.length}</div></div>
+        `
+        : `<div class="card" style="grid-column:1/-1;"><span class="badge badge-teal">VOLUNTEER CHECK-IN DESK</span><div style="font-size:0.9rem; margin-top:0.35rem;">Use the Delegate Pass Check-In Verification panel below to check in arriving attendees at eFundanathi eZone.</div></div>`;
+    }
+
+    if (isComm) {
+      renderAdminUsersList();
+      renderAdminAuditLog();
     }
 
     if (stageSel && state.stages.length) {
@@ -1271,6 +1368,168 @@
             .join("")
         : `<div style="font-size:0.82rem; color:var(--ink-muted);">No sponsor inquiries recorded yet.</div>`;
     }
+  }
+
+  function renderAdminUsersList() {
+    const box = document.getElementById("adminUsersListContainer");
+    if (!box) return;
+    const isSuper = window.STHS_AUTH.isSuperAdmin();
+    const q = state.adminUserSearch.toLowerCase().trim();
+    const roleFilter = state.adminUserRoleFilter;
+
+    const filtered = state.adminUsers.filter((u) => {
+      const isPending = u.event_approval_status === "pending" || u.profile_approval_status === "pending";
+      if (roleFilter === "PENDING" && !isPending) return false;
+      if (roleFilter !== "ALL" && roleFilter !== "PENDING") {
+        if (roleFilter === "delegate") {
+          if (!["delegate", "student"].includes(u.event_role)) return false;
+        } else if (u.event_role !== roleFilter && u.platform_role !== roleFilter) {
+          return false;
+        }
+      }
+      if (q && !`${u.display_name} ${u.email} ${u.university} ${u.event_role} ${u.requested_event_role}`.toLowerCase().includes(q)) {
+        return false;
+      }
+      return true;
+    });
+
+    if (!filtered.length) {
+      box.innerHTML = `<div style="padding:1.25rem; text-align:center; color:var(--ink-muted); font-size:0.86rem;">No matching users found.</div>`;
+      return;
+    }
+
+    const assignableRoles = isSuper
+      ? [
+          ["delegate", "Delegate"],
+          ["student", "Student / Emerging Scholar"],
+          ["speaker", "Speaker / Presenter"],
+          ["sponsor", "Sponsor / Exhibitor"],
+          ["volunteer", "Check-In Volunteer"],
+          ["session_chair", "Session Chair / Moderator"],
+          ["reviewer", "Scientific Peer Reviewer"],
+          ["planning_committee", "Planning Committee"],
+          ["super_admin", "Super Admin (Full Control)"]
+        ]
+      : [
+          ["delegate", "Delegate"],
+          ["student", "Student / Emerging Scholar"],
+          ["speaker", "Speaker / Presenter"],
+          ["sponsor", "Sponsor / Exhibitor"],
+          ["volunteer", "Check-In Volunteer"],
+          ["session_chair", "Session Chair / Moderator"],
+          ["reviewer", "Scientific Peer Reviewer"]
+        ];
+
+    box.innerHTML = filtered
+      .map((u) => {
+        const isPending = u.event_approval_status === "pending" || u.profile_approval_status === "pending";
+        const reqRole = u.requested_event_role || u.requested_platform_role;
+        const isRoot = (u.email || "").toLowerCase() === "spha.msimang@wits.ac.za";
+        const lockedForCommittee = !isSuper && (u.platform_role === "super_admin" || u.event_role === "super_admin" || ["super_admin", "planning_committee"].includes(reqRole));
+
+        return `
+          <div style="border:2px solid ${isPending ? "#d9822b" : "#dfd3be"}; background:${isPending ? "#fef7ec" : "#fff"}; border-radius:14px; padding:0.85rem 1rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem;">
+            <div style="min-width:220px; flex:1;">
+              <div style="display:flex; align-items:center; gap:0.45rem; flex-wrap:wrap;">
+                <strong>${esc(u.display_name || u.email)}</strong>
+                <span class="badge ${u.event_role === "super_admin" || u.platform_role === "super_admin" ? "badge-terracotta" : "badge-teal"}">${esc(window.STHS_AUTH.formatRoleLabel(u.platform_role === "super_admin" ? "super_admin" : u.event_role))}</span>
+                ${u.checked_in ? '<span class="badge badge-success">Checked In</span>' : ""}
+                ${isPending ? '<span class="badge badge-mustard">⏳ Pending Approval</span>' : ""}
+              </div>
+              <div style="font-size:0.78rem; color:var(--ink-muted); margin-top:0.2rem;">
+                ${esc(u.email)} · ${esc(u.university || "Institution TBA")} ${u.badge_code ? `· Pass: <code>${esc(u.badge_code)}</code>` : ""}
+              </div>
+              ${isPending && reqRole ? `<div style="font-size:0.8rem; font-weight:800; color:#9a5205; margin-top:0.25rem;">Requested Role: ${esc(window.STHS_AUTH.formatRoleLabel(reqRole))}</div>` : ""}
+            </div>
+
+            <div style="display:flex; gap:0.45rem; align-items:center; flex-wrap:wrap;">
+              ${
+                isRoot
+                  ? `<span class="badge badge-terracotta">Primary Super Admin</span>`
+                  : lockedForCommittee
+                  ? `<span style="font-size:0.76rem; color:var(--ink-muted); font-weight:700;">Requires Super Admin Approval</span>`
+                  : `
+                    ${
+                      isPending && reqRole
+                        ? `<button type="button" class="btn btn-primary btn-sm" data-approve-user="${u.user_id}" data-approve-role="${esc(reqRole)}">✓ Approve ${esc(window.STHS_AUTH.formatRoleLabel(reqRole))}</button>
+                           <button type="button" class="btn btn-outline btn-sm" data-decline-user="${u.user_id}">✕ Decline</button>`
+                        : ""
+                    }
+                    <select class="select-field" data-user-role-sel="${u.user_id}" style="font-size:0.78rem; padding:0.38rem 0.55rem;">
+                      ${assignableRoles
+                        .map(([val, lbl]) => `<option value="${val}" ${(u.platform_role === "super_admin" ? "super_admin" : u.event_role) === val ? "selected" : ""}>${lbl}</option>`)
+                        .join("")}
+                    </select>
+                    <button type="button" class="btn btn-mustard btn-sm" data-save-user-role="${u.user_id}">Update Role</button>
+                  `
+              }
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+
+    async function applyAccessChange(targetUserId, newRole, approvalStatus, note) {
+      const sb = window.STHS_DB.getClient();
+      const newPlat = newRole === "super_admin" ? "super_admin" : newRole === "planning_committee" ? "planning_committee" : "member";
+      const { data, error } = await sb.rpc("admin_update_user_access", {
+        p_target_user_id: targetUserId,
+        p_event_id: state.eventId,
+        p_new_event_role: newRole,
+        p_new_platform_role: isSuper ? newPlat : null,
+        p_approval_status: approvalStatus,
+        p_note: note
+      });
+      if (error || !data?.ok) {
+        window.STHS_DB.showToast(error?.message || data?.error || "Could not update user access.", "⚠️");
+      } else {
+        window.STHS_DB.showToast(
+          approvalStatus === "declined"
+            ? "Request declined — user remains on Delegate access."
+            : `Access updated to ${window.STHS_AUTH.formatRoleLabel(data.event_role)}!`,
+          "✅"
+        );
+        await loadAllLiveData();
+      }
+    }
+
+    box.querySelectorAll("[data-approve-user]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        applyAccessChange(btn.dataset.approveUser, btn.dataset.approveRole, "approved", "Approved via Symposium Access Console")
+      );
+    });
+    box.querySelectorAll("[data-decline-user]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        applyAccessChange(btn.dataset.declineUser, "delegate", "declined", "Role request declined")
+      );
+    });
+    box.querySelectorAll("[data-save-user-role]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const uid = btn.dataset.saveUserRole;
+        const chosen = box.querySelector(`[data-user-role-sel="${uid}"]`)?.value || "delegate";
+        applyAccessChange(uid, chosen, "approved", "Updated via User Access Manager");
+      });
+    });
+  }
+
+  function renderAdminAuditLog() {
+    const el = document.getElementById("adminAuditLogList");
+    if (!el) return;
+    if (!state.adminAuditLogs.length) {
+      el.innerHTML = `<div style="font-size:0.8rem; color:var(--ink-muted);">No role approvals or access changes recorded yet.</div>`;
+      return;
+    }
+    el.innerHTML = state.adminAuditLogs
+      .map(
+        (l) => `
+        <div style="font-size:0.78rem; padding:0.45rem 0.65rem; background:#fff; border-radius:8px; border:1px solid #e4d9c5;">
+          <strong>${esc(l.actor_email)}</strong> → <span style="text-transform:uppercase; font-weight:800;">${esc(l.action)}</span>
+          <strong>${esc(l.target_email)}</strong> to <strong>${esc(window.STHS_AUTH.formatRoleLabel(l.new_event_role))}</strong>
+          <span style="color:var(--ink-muted);">· ${new Date(l.created_at).toLocaleString()}</span>
+        </div>
+      `
+      )
+      .join("");
   }
 
   function syncAdminStageFields() {
@@ -1994,7 +2253,7 @@
       e.preventDefault();
       if (!window.STHS_AUTH.requireAuth("ask a question in Live Q&A")) return;
       if (!/^[0-9a-f-]{36}$/i.test(state.activeStageId)) {
-        window.STHS_DB.showToast("Live Q&A activates once Supabase seed SQL is executed.", "ℹ️");
+        window.STHS_DB.showToast("Live Q&A opens as soon as the stage stream is active.", "💬");
         return;
       }
       const sb = window.STHS_DB.getClient();
@@ -2152,6 +2411,36 @@
     document.getElementById("exportAbsCsvBtn")?.addEventListener("click", () => {
       downloadCsv("gameon-2027-abstracts.csv", state.reviewAbstracts);
     });
+
+    document.getElementById("exportSponsorLeadsCsvBtn")?.addEventListener("click", () => {
+      downloadCsv("gameon-2027-sponsor-leads.csv", state.sponsorPartnerLeads);
+    });
+
+    document.getElementById("adminUserRoleFilter")?.addEventListener("change", (e) => {
+      state.adminUserRoleFilter = e.target.value;
+      renderAdminUsersList();
+    });
+    document.getElementById("adminUserSearchInput")?.addEventListener("input", (e) => {
+      state.adminUserSearch = e.target.value;
+      renderAdminUsersList();
+    });
+
+    document.getElementById("volunteerCheckinForm")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const sb = window.STHS_DB.getClient();
+      const code = document.getElementById("volunteerBadgeInput").value.trim();
+      const out = document.getElementById("volunteerCheckinResult");
+      if (!code || !state.eventId) return;
+      const { data, error } = await sb.rpc("volunteer_checkin_badge", { p_event_id: state.eventId, p_badge_code: code });
+      if (error || !data?.ok) {
+        out.innerHTML = `<div class="sths-alert sths-alert-error">${esc(error?.message || data?.error || "Check-in failed.")}</div>`;
+      } else {
+        out.innerHTML = `<div class="sths-alert sths-alert-success"><strong>✅ Checked In:</strong> ${esc(data.delegate_name)} (${esc(data.university)}) · ${esc(window.STHS_AUTH.formatRoleLabel(data.role))} ${data.already_checked_in ? "<em>(Previously checked in)</em>" : ""}</div>`;
+        document.getElementById("volunteerBadgeInput").value = "";
+        window.STHS_DB.showToast(`${data.delegate_name} checked in!`, "✅");
+        await loadAllLiveData();
+      }
+    });
   }
 
   async function boot() {
@@ -2168,6 +2457,7 @@
     window.STHS_AUTH.subscribe((authState) => {
       renderHeaderAuth(authState);
       renderPeerReview();
+      renderSponsors();
       renderAdminDashboard();
     });
 
