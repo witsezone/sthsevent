@@ -470,6 +470,14 @@
     bindModalEvents();
   }
 
+  function formatAuthError(err) {
+    const msg = String(err?.message || err || "Unable to complete sign-in.");
+    if (/rate limit/i.test(msg) || err?.status === 429) {
+      return "Too many sign-in emails were requested recently. Please wait a few minutes before requesting another link, or sign in with your email and password.";
+    }
+    return msg;
+  }
+
   function setStatusBanner(type, message) {
     const el = document.getElementById("sthsAuthStatusBanner");
     if (!el) return;
@@ -518,7 +526,7 @@
       setStatusBanner("info", "Updating your password…");
       const { error } = await sb.auth.updateUser({ password: p1 });
       if (error) {
-        setStatusBanner("error", error.message);
+        setStatusBanner("error", formatAuthError(error));
         return;
       }
       document.getElementById("sthsResetPasswordForm").reset();
@@ -552,7 +560,7 @@
         return;
       }
       const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: getRedirectUrl() });
-      if (error) setStatusBanner("error", error.message);
+      if (error) setStatusBanner("error", formatAuthError(error));
       else setStatusBanner("success", `Password reset instructions sent to <strong>${email}</strong>.`);
     });
 
@@ -584,7 +592,7 @@
         }
       });
       if (error) {
-        setStatusBanner("error", error.message);
+        setStatusBanner("error", formatAuthError(error));
         return;
       }
 
@@ -630,14 +638,40 @@
       e.preventDefault();
       const sb = window.STHS_DB?.getClient();
       if (!sb) return;
+      const submitBtn = e.target.querySelector('button[type="submit"]');
       const email = document.getElementById("authMagicEmail").value.trim();
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Sending link…";
+      }
       setStatusBanner("info", "Sending your secure sign-in link…");
       const { error } = await sb.auth.signInWithOtp({
         email,
         options: { emailRedirectTo: getRedirectUrl() }
       });
-      if (error) setStatusBanner("error", error.message);
-      else setStatusBanner("success", `Check <strong>${email}</strong> for your one-click sign-in link.`);
+      if (error) {
+        setStatusBanner("error", formatAuthError(error));
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Send One-Click Sign-In Link";
+        }
+      } else {
+        setStatusBanner("success", `Check <strong>${email}</strong> for your one-click sign-in link (please check Spam/Junk if it does not arrive within 1 minute).`);
+        if (submitBtn) {
+          let secs = 60;
+          submitBtn.textContent = `Link sent — resend in ${secs}s`;
+          const timer = setInterval(() => {
+            secs -= 1;
+            if (secs <= 0) {
+              clearInterval(timer);
+              submitBtn.disabled = false;
+              submitBtn.textContent = "Send One-Click Sign-In Link";
+            } else {
+              submitBtn.textContent = `Link sent — resend in ${secs}s`;
+            }
+          }, 1000);
+        }
+      }
     });
 
     document.getElementById("sthsEventRegForm")?.addEventListener("submit", async (e) => {

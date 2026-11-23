@@ -1,4 +1,4 @@
-const CACHE_NAME = "sths-eventhub-v1.2.0";
+const CACHE_NAME = "sths-eventhub-v1.2.1";
 const APP_SHELL_URLS = [
   "./",
   "./index.html",
